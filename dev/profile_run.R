@@ -20,7 +20,7 @@ fixed_recov <- function(n) rep(10, n)
 
 ## run_sim(): a single branching_process_main() call with a full, valid
 ## parameter set. Override any argument via `...`, e.g.
-##   run_sim(mn_offspring_genPop = 3, seed = 7).
+##   run_sim(mn_contacts_genPop = 3, seed = 7).
 ##
 ## Two defaults differ from the bpm_args() test fixture, both profiling-relevant:
 ##   * check_final_size = 30000  (fixture: 200)   <- the cap you asked for.
@@ -31,16 +31,19 @@ fixed_recov <- function(n) rep(10, n)
 ##     30000. 1e6 keeps susceptibles non-limiting.
 run_sim <- function(seed = 1L, check_final_size = 30000L, population = 1e6, ...) {
   defaults <- list(
-    mn_offspring_genPop           = 1.5,
-    overdisp_offspring_genPop     = 0.5,
+    mn_contacts_genPop           = 1.5,
+    baseline_risk_genPop           = 1,
+    overdisp_contacts_genPop     = 0.5,
     Tg_shape_genPop               = 2,
     Tg_rate_genPop                = 0.15,
-    mn_offspring_hcw              = 1.5,
-    overdisp_offspring_hcw        = 0.5,
+    mn_contacts_hcw              = 1.5,
+    baseline_risk_hcw              = 1,
+    overdisp_contacts_hcw        = 0.5,
     Tg_shape_hcw                  = 2,
     Tg_rate_hcw                   = 0.15,
-    mn_offspring_funeral          = 1.5,
-    overdisp_offspring_funeral    = 0.5,
+    mn_contacts_funeral          = 1.5,
+    baseline_risk_funeral          = 1,
+    overdisp_contacts_funeral    = 0.5,
     Tg_shape_funeral              = 10,
     Tg_rate_funeral               = 5,
     incubation_period             = fixed_inc,
@@ -73,6 +76,7 @@ run_sim <- function(seed = 1L, check_final_size = 30000L, population = 1e6, ...)
     prob_hcw_cond_funeral_genPop  = 0.05,
     population                    = population,
     hcw_per_capita                = 0.02,
+    check_presymptomatic = FALSE,
     check_final_size              = check_final_size,
     seeding_cases                 = 3,
     seed                          = seed
@@ -99,9 +103,9 @@ profile_run <- function(seed = 1L, out_html = "dev/profile.html") {
   }
   p <- profvis::profvis({
     run_sim(seed = seed,
-            mn_offspring_genPop  = 3,
-            mn_offspring_hcw     = 3,
-            mn_offspring_funeral = 3)
+            mn_contacts_genPop  = 3,
+            mn_contacts_hcw     = 3,
+            mn_contacts_funeral = 3)
   })
   if (!is.null(out_html) && requireNamespace("htmlwidgets", quietly = TRUE)) {
     htmlwidgets::saveWidget(p, normalizePath(out_html, mustWork = FALSE),
@@ -115,8 +119,8 @@ profile_run <- function(seed = 1L, out_html = "dev/profile.html") {
 ## If you'd rather not install profvis, this prints the top self-time lines:
 ##
 ##   Rprof("dev/Rprof.out", line.profiling = TRUE)
-##   invisible(run_sim(seed = 1, mn_offspring_genPop = 3,
-##                     mn_offspring_hcw = 3, mn_offspring_funeral = 3))
+##   invisible(run_sim(seed = 1, mn_contacts_genPop = 3,
+##                     mn_contacts_hcw = 3, mn_contacts_funeral = 3))
 ##   Rprof(NULL)
 ##   s <- summaryRprof("dev/Rprof.out", lines = "show")
 ##   head(s$by.self, 20)

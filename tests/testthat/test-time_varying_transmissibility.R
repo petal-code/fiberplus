@@ -1,5 +1,5 @@
 ## Tests for time-varying mean-offspring transmissibility:
-##   mn_offspring_genPop, mn_offspring_hcw, mn_offspring_funeral.
+##   mn_contacts_genPop, mn_contacts_hcw, mn_contacts_funeral.
 ##
 ## These may be supplied as a single positive scalar (back-compatible) or as a
 ## function(t) of absolute calendar time. genPop/HCW are resolved at the
@@ -48,8 +48,9 @@ mean_offspring_genPop <- function(reps, parent, mn, base_seed = 0) {
     set.seed(base_seed + i)
     nrow(offspring_function_genPop(
       parent_info                   = parent,
-      mn_offspring_genPop           = mn,
-      overdisp_offspring_genPop     = 5,
+      mn_contacts_genPop           = mn,
+      baseline_risk_genPop           = 1,
+      overdisp_contacts_genPop     = 5,
       Tg_shape_genPop               = 2,
       Tg_rate_genPop                = 0.15,
       prop_etu                      = 1,
@@ -69,8 +70,9 @@ mean_offspring_funeral <- function(reps, parent, mn, base_seed = 0) {
     set.seed(base_seed + i)
     nrow(offspring_function_funeral(
       parent_info                  = parent,
-      mn_offspring_funeral         = mn,
-      overdisp_offspring_funeral   = 5,
+      mn_contacts_funeral         = mn,
+      baseline_risk_funeral         = 1,
+      overdisp_contacts_funeral   = 5,
       Tg_shape_funeral             = 10,
       Tg_rate_funeral              = 5,
       safe_funeral_efficacy        = 1.0,
@@ -89,16 +91,19 @@ fixed_recov <- function(n) rep(10, n)
 
 bpm_args <- function(...) {
   defaults <- list(
-    mn_offspring_genPop           = 1.5,
-    overdisp_offspring_genPop     = 0.5,
+    mn_contacts_genPop           = 1.5,
+    baseline_risk_genPop           = 1,
+    overdisp_contacts_genPop     = 0.5,
     Tg_shape_genPop               = 2,
     Tg_rate_genPop                = 0.15,
-    mn_offspring_hcw              = 1.5,
-    overdisp_offspring_hcw        = 0.5,
+    mn_contacts_hcw              = 1.5,
+    baseline_risk_hcw              = 1,
+    overdisp_contacts_hcw        = 0.5,
     Tg_shape_hcw                  = 2,
     Tg_rate_hcw                   = 0.15,
-    mn_offspring_funeral          = 1.5,
-    overdisp_offspring_funeral    = 0.5,
+    mn_contacts_funeral          = 1.5,
+    baseline_risk_funeral          = 1,
+    overdisp_contacts_funeral    = 0.5,
     Tg_shape_funeral              = 10,
     Tg_rate_funeral               = 5,
     incubation_period             = fixed_inc,
@@ -131,6 +136,8 @@ bpm_args <- function(...) {
     prob_hcw_cond_funeral_genPop  = 0.05,
     population                    = 5000,
     hcw_per_capita                = 0.02,
+    check_presymptomatic = FALSE,
+    quiet                = TRUE,   # these runs sit at a tiny cap; the censoring warning is expected
     check_final_size              = 200,
     seeding_cases                 = 3,
     seed                          = 1L
@@ -159,8 +166,9 @@ test_that("offspring_function_genPop accepts a scalar mn (back-compatible)", {
   set.seed(1)
   res <- offspring_function_genPop(
     parent_info                   = make_parent_info(),
-    mn_offspring_genPop           = 8,
-    overdisp_offspring_genPop     = 5,
+    mn_contacts_genPop           = 8,
+    baseline_risk_genPop           = 1,
+    overdisp_contacts_genPop     = 5,
     Tg_shape_genPop               = 2,
     Tg_rate_genPop                = 0.15,
     prop_etu                      = 1,
@@ -181,8 +189,9 @@ test_that("a constant function(t) reproduces the scalar exactly (genPop)", {
   set.seed(123)
   res_scalar <- offspring_function_genPop(
     parent_info                   = parent,
-    mn_offspring_genPop           = 8,
-    overdisp_offspring_genPop     = 5,
+    mn_contacts_genPop           = 8,
+    baseline_risk_genPop           = 1,
+    overdisp_contacts_genPop     = 5,
     Tg_shape_genPop               = 2,
     Tg_rate_genPop                = 0.15,
     prop_etu                      = 1,
@@ -197,8 +206,9 @@ test_that("a constant function(t) reproduces the scalar exactly (genPop)", {
   set.seed(123)
   res_fn <- offspring_function_genPop(
     parent_info                   = parent,
-    mn_offspring_genPop           = function(t) 8,
-    overdisp_offspring_genPop     = 5,
+    mn_contacts_genPop           = function(t) 8,
+    baseline_risk_genPop           = 1,
+    overdisp_contacts_genPop     = 5,
     Tg_shape_genPop               = 2,
     Tg_rate_genPop                = 0.15,
     prop_etu                      = 1,
@@ -216,7 +226,7 @@ test_that("a constant function(t) reproduces the scalar exactly (genPop)", {
 
 ## --- Time-variation actually changes offspring counts ---------------------
 
-test_that("time-varying mn_offspring_genPop is keyed to the parent's infection time", {
+test_that("time-varying mn_contacts_genPop is keyed to the parent's infection time", {
   ## High transmissibility early (t < 100), low late.
   mn_fn <- function(t) ifelse(t < 100, 40, 2)
 
@@ -231,7 +241,7 @@ test_that("time-varying mn_offspring_genPop is keyed to the parent's infection t
   expect_gt(mean_early, mean_late)
 })
 
-test_that("time-varying mn_offspring_funeral is keyed to the parent's DEATH time", {
+test_that("time-varying mn_contacts_funeral is keyed to the parent's DEATH time", {
   ## Low early (t < 100), high late. Both parents are infected at t = 0, so if
   ## the funeral mean were (wrongly) keyed to infection time both would be low.
   ## Keyed to death time, the late-dying parent should generate many more.
@@ -256,8 +266,9 @@ test_that("offspring functions reject a non-positive scalar mn", {
   expect_error(
     offspring_function_genPop(
       parent_info                   = make_parent_info(),
-      mn_offspring_genPop           = -1,
-      overdisp_offspring_genPop     = 5,
+      mn_contacts_genPop           = -1,
+      baseline_risk_genPop           = 1,
+      overdisp_contacts_genPop     = 5,
       Tg_shape_genPop               = 2,
       Tg_rate_genPop                = 0.15,
       prop_etu                      = 1,
@@ -268,25 +279,27 @@ test_that("offspring functions reject a non-positive scalar mn", {
       prob_hcw_cond_genPop_comm     = 0,
       prob_hcw_cond_genPop_hospital = 0.3
     ),
-    "mn_offspring_genPop"
+    "mn_contacts_genPop"
   )
 })
 
 test_that("branching_process_main rejects a mn curve that dips to <= 0", {
   bad <- make_time_varying(c(0, 30, 60), c(2, 1, -0.5))
   expect_error(
-    do.call(branching_process_main, bpm_args(mn_offspring_genPop = bad)),
-    "mn_offspring_genPop.*positive"
+    do.call(branching_process_main, bpm_args(mn_contacts_genPop = bad)),
+    "mn_contacts_genPop.*positive"
   )
 })
 
 ## --- End-to-end integration ----------------------------------------------
 
-test_that("branching_process_main runs with time-varying mn_offspring_*", {
+test_that("branching_process_main runs with time-varying mn_contacts_*", {
   args <- bpm_args(
-    mn_offspring_genPop  = make_time_varying(c(0, 60, 120), c(2.0, 1.2, 0.6)),
-    mn_offspring_hcw     = function(t) 1.5,
-    mn_offspring_funeral = make_time_varying(c(0, 60), c(2.0, 0.5))
+    mn_contacts_genPop  = make_time_varying(c(0, 60, 120), c(2.0, 1.2, 0.6)),
+    baseline_risk_genPop  = 1,
+    mn_contacts_hcw     = function(t) 1.5,
+    baseline_risk_hcw     = 1,
+    mn_contacts_funeral = make_time_varying(c(0, 60), c(2.0, 0.5))
   )
   out <- do.call(branching_process_main, args)
   expect_true(is.list(out))
@@ -294,8 +307,8 @@ test_that("branching_process_main runs with time-varying mn_offspring_*", {
 })
 
 test_that("a constant function reproduces the scalar run exactly (full sim)", {
-  out_scalar <- do.call(branching_process_main, bpm_args(mn_offspring_genPop = 1.5))
-  out_fn     <- do.call(branching_process_main, bpm_args(mn_offspring_genPop = function(t) 1.5))
+  out_scalar <- do.call(branching_process_main, bpm_args(mn_contacts_genPop = 1.5))
+  out_fn     <- do.call(branching_process_main, bpm_args(mn_contacts_genPop = function(t) 1.5))
   ## Same seed + same resolved mean + no extra RNG draws => identical tree.
   expect_identical(out_scalar$tdf$time_infection_absolute,
                    out_fn$tdf$time_infection_absolute)

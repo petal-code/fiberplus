@@ -5,18 +5,38 @@
 \title{Run a stochastic branching-process outbreak simulation}
 \usage{
 branching_process_main(
-  mn_offspring_genPop = NULL,
-  overdisp_offspring_genPop = NULL,
+  mn_contacts_genPop = NULL,
+  overdisp_contacts_genPop = NULL,
+  baseline_risk_genPop = NULL,
   Tg_shape_genPop = NULL,
   Tg_rate_genPop = NULL,
-  mn_offspring_hcw = NULL,
-  overdisp_offspring_hcw = NULL,
+  mn_contacts_hcw = NULL,
+  overdisp_contacts_hcw = NULL,
+  baseline_risk_hcw = NULL,
   Tg_shape_hcw = NULL,
   Tg_rate_hcw = NULL,
-  mn_offspring_funeral = NULL,
-  overdisp_offspring_funeral = NULL,
+  mn_contacts_funeral = NULL,
+  overdisp_contacts_funeral = NULL,
+  baseline_risk_funeral = NULL,
   Tg_shape_funeral = NULL,
   Tg_rate_funeral = NULL,
+  contact_risk = NULL,
+  contact_risk_genPop = NULL,
+  contact_risk_hcw = NULL,
+  contact_risk_funeral = NULL,
+  r0_target = NULL,
+  r0_prop_funeral = 0,
+  r0_solve_n = 50000,
+  r0_solve_seed = NULL,
+  trace_coverage = 0,
+  onset_to_hospitalisation_traced = NULL,
+  prob_hospitalised_traced = NULL,
+  prob_hospitalised_multiplier_traced = 1,
+  presymptomatic_transmission = TRUE,
+  check_presymptomatic = TRUE,
+  presymptomatic_warn_threshold = 0.1,
+  return_contact_log = TRUE,
+  quiet = FALSE,
   incubation_period,
   onset_to_hospitalisation,
   hospitalisation_delay_factor = 1,
@@ -65,12 +85,17 @@ branching_process_main(
 )
 }
 \arguments{
-\item{mn_offspring_genPop}{Positive numeric or function(t). Mean of the Negative Binomial
-offspring distribution for general-population (genPop) parents; resolved at the parent's
+\item{mn_contacts_genPop}{Positive numeric or function(t). Mean of the Negative Binomial
+\emph{contact} distribution for general-population (genPop) parents; resolved at the parent's
 infection time. Scalar or a function of absolute calendar time (e.g. \code{\link[=make_time_varying]{make_time_varying()}}).}
 
-\item{overdisp_offspring_genPop}{Positive numeric. Negative Binomial size (overdispersion) for
-genPop parents.}
+\item{overdisp_contacts_genPop}{Positive numeric. Negative Binomial size (overdispersion) of the
+genPop contact distribution. Does not affect the implied R0, so it dials superspreading
+independently of the calibration.}
+
+\item{baseline_risk_genPop}{Numeric in \verb{[0, 1]} or function(t). Per-contact transmission
+probability for the \emph{reference} risk tier on the genPop route; other tiers scale it by their
+relative risk. Supply this or \code{r0_target}, not both.}
 
 \item{Tg_shape_genPop}{Positive numeric. Shape of the Gamma generation-time distribution for
 genPop parents.}
@@ -78,11 +103,15 @@ genPop parents.}
 \item{Tg_rate_genPop}{Positive numeric. Rate of the Gamma generation-time distribution for genPop
 parents (mean generation time = shape / rate).}
 
-\item{mn_offspring_hcw}{Positive numeric or function(t). Mean Negative Binomial offspring
+\item{mn_contacts_hcw}{Positive numeric or function(t). Mean Negative Binomial contact
 distribution for healthcare-worker (HCW) parents; resolved at the parent's infection time.}
 
-\item{overdisp_offspring_hcw}{Positive numeric. Negative Binomial size (overdispersion) for HCW
-parents.}
+\item{overdisp_contacts_hcw}{Positive numeric. Negative Binomial size (overdispersion) of the HCW
+contact distribution.}
+
+\item{baseline_risk_hcw}{Numeric in \verb{[0, 1]} or function(t). Per-contact transmission probability
+for the reference risk tier on the HCW route. When \code{r0_target} is used this defaults to the
+solved genPop baseline risk.}
 
 \item{Tg_shape_hcw}{Positive numeric. Shape of the Gamma generation-time distribution for HCW
 parents.}
@@ -90,17 +119,86 @@ parents.}
 \item{Tg_rate_hcw}{Positive numeric. Rate of the Gamma generation-time distribution for HCW
 parents.}
 
-\item{mn_offspring_funeral}{Positive numeric or function(t). Mean Negative Binomial number of
-offspring at an unsafe funeral; resolved at the parent's death (outcome) time.}
+\item{mn_contacts_funeral}{Positive numeric or function(t). Mean Negative Binomial number of
+contacts at a funeral; resolved at the parent's death (outcome) time.}
 
-\item{overdisp_offspring_funeral}{Positive numeric. Negative Binomial size (overdispersion) for
-funeral offspring.}
+\item{overdisp_contacts_funeral}{Positive numeric. Negative Binomial size (overdispersion) of the
+funeral contact distribution.}
+
+\item{baseline_risk_funeral}{Numeric in \verb{[0, 1]} or function(t). Per-contact transmission
+probability for the reference risk tier at a funeral. Supply this or \code{r0_target}, not both.}
 
 \item{Tg_shape_funeral}{Positive numeric. Shape of the Gamma outcome-to-funeral-infection delay
 distribution.}
 
 \item{Tg_rate_funeral}{Positive numeric. Rate of the Gamma funeral-delay distribution (mean delay
 = shape / rate).}
+
+\item{contact_risk}{A \code{\link[=make_contact_risk]{make_contact_risk()}} structure (or a named list of its arguments) giving
+the risk tier fractions, relative risks and per-tier contact-tracing probabilities. Used by
+every route unless that route overrides it. Defaults to five flat tiers with no tracing.}
+
+\item{contact_risk_genPop, contact_risk_hcw, contact_risk_funeral}{Optional per-route risk
+structures. \code{NULL} (the default) inherits \code{contact_risk}. Typically genPop and HCW share the
+inherited structure while funerals get their own.}
+
+\item{r0_target}{Optional positive numeric. If supplied, the genPop and funeral baseline risks
+are solved from this target R0 via \code{\link[=solve_baseline_risk_for_r0]{solve_baseline_risk_for_r0()}} instead of being given
+directly, using \code{r0_prop_funeral} to split transmission between the two routes. The solved
+values are returned in \code{sim_info}.}
+
+\item{r0_prop_funeral}{Numeric in \verb{[0, 1]}. Share of \code{r0_target} attributed to the funeral route.
+Only used when \code{r0_target} is supplied. Defaults to 0.}
+
+\item{r0_solve_n, r0_solve_seed}{Monte-Carlo settings for the R0 inversion.}
+
+\item{trace_coverage}{Numeric in \verb{[0, 1]} or function(t). Programme-level contact tracing
+coverage, multiplying each risk tier's \code{trace_prob}. Defaults to 0 (no tracing).}
+
+\item{onset_to_hospitalisation_traced}{Non-negative numeric or function(t), or NULL. Flat
+onset-to-admission delay, in days, for cases that were traced. It \emph{caps} rather than replaces
+each traced case's own drawn delay, so tracing can only bring an admission forward, never
+push it back. \code{NULL} (default) means tracing does not change admission timing. A warning is
+raised if this is not comfortably below the untraced delay distribution, since a value above
+it would silently do nothing.}
+
+\item{prob_hospitalised_traced}{Numeric in \verb{[0, 1]} or function(t), or NULL. The absolute
+P(hospitalised | symptomatic) for traced cases, replacing the untraced value outright. Use this
+when a scenario says "traced cases are hospitalised with probability 0.9" — a multiplier cannot
+pin that down when the untraced probability is itself time-varying. \code{NULL} (default) means no
+effect. Takes precedence over \code{prob_hospitalised_multiplier_traced}; supplying both is an error.}
+
+\item{prob_hospitalised_multiplier_traced}{Positive numeric or function(t). Multiplier on
+P(hospitalised | symptomatic) for traced cases, capped at 1. Defaults to 1 (no effect). Note
+that faster admission raises the \emph{realised} hospitalisation rate on its own, independently of
+this multiplier, because admission is more likely to beat the community outcome.}
+
+\item{presymptomatic_transmission}{Logical scalar. \code{TRUE} (default) allows contacts to occur
+before the infector develops symptoms — the model's natural behaviour, since contact times and
+incubation periods are drawn independently. \code{FALSE} truncates each parent's contact times to
+start at the end of their incubation period, removing presymptomatic transmission entirely.
+Applies to every parent, symptomatic or not. Note this lengthens the realised generation time,
+because the generation-time distribution is being conditioned rather than reshaped.}
+
+\item{check_presymptomatic}{Logical scalar. If \code{TRUE} (default) and presymptomatic transmission
+is allowed, estimate its share once at the start of the run and warn when it exceeds
+\code{presymptomatic_warn_threshold}. The estimate uses its own RNG draws and restores the random
+seed afterwards, so it never perturbs the simulated trajectory. Set \code{FALSE} to skip the cost
+in large calibration runs. See \code{\link[=approx_presymptomatic_transmission]{approx_presymptomatic_transmission()}}.}
+
+\item{presymptomatic_warn_threshold}{Numeric in \verb{[0, 1]}. Presymptomatic share above which
+\code{check_presymptomatic} warns. Defaults to 0.1.}
+
+\item{return_contact_log}{Logical scalar. \code{TRUE} (default) returns the full contact log. \code{FALSE}
+skips building it per parent and accumulating it, and returns a 0-row frame. The log is roughly
+one row per contact, so at \code{check_final_size = 30000} with ~15 contacts per case it is around
+450,000 rows (~47 MB) \strong{per run} — set this \code{FALSE} in calibration loops, where thousands of
+runs would otherwise hold that much each.}
+
+\item{quiet}{Logical scalar. \code{FALSE} (default) emits a \code{message()} at the end of each run saying
+why the simulation stopped, and warns when it was censored by \code{check_final_size}. Set \code{TRUE} to
+silence it. A censored run's final size measures the cap, not transmission, so any analysis of
+final size must check \code{sim_info$hit_final_size_cap} first.}
 
 \item{incubation_period}{Function(n). Random generator returning n incubation-period draws
 (infection to symptom onset).}
@@ -150,21 +248,8 @@ an HCW parent is an HCW.}
 \item{prob_hospital_cond_hcw_preAdm}{Numeric in \verb{[0, 1]}. Probability that an infection generated by
 an HCW parent before their own admission occurs in the hospital (while still working).}
 
-\item{ppe_efficacy_hcw}{Numeric in \verb{[0, 1]} or function(t). Per-layer efficacy of PPE/IPC at
-reducing hospital transmission; resolved at each candidate hospital transmission time.}
-
-\item{hospital_quarantine_efficacy}{Optional numeric in \verb{[0, 1]} or function(t). Direct
-post-admission hospital quarantine/ETU efficacy. If NULL, derived from \code{prop_etu}, \code{ipc_helper}
-and \code{etu_efficacy_baseline}.}
-
 \item{prop_etu}{Numeric in \verb{[0, 1]} or function(t). Proportion of hospitalised cases in ETU/ETC
 care; used when \code{hospital_quarantine_efficacy} is NULL.}
-
-\item{ipc_helper}{Numeric in \verb{[0, 1]} or function(t). IPC/response-maturity proxy; used when
-\code{hospital_quarantine_efficacy} is NULL.}
-
-\item{etu_efficacy_baseline}{Numeric in \verb{[0, 1]}. Baseline ETU/ETC transmission-blocking efficacy
-before IPC-maturity adjustment; used when \code{hospital_quarantine_efficacy} is NULL.}
 
 \item{obv_pep_enabled}{Logical scalar. If TRUE, apply the obeldesivir (OBV) PEP
 infection-prevention gate.}
@@ -183,12 +268,13 @@ efficacy(DPC) relationship stays fixed.}
 
 \item{obv_pep_dpc_sd}{NULL or a single positive numeric. NULL (default) keeps DPC
 deterministic at \code{obv_pep_dpc} (bit-for-bit identical to pre-feature runs). If supplied,
-it is the standard deviation of the per-recipient DPC: each recipient draws an independent DPC
-from a Gamma reparameterised from (mean, sd) as
-\code{Gamma(shape = obv_pep_dpc(t)^2 / obv_pep_dpc_sd^2, scale = obv_pep_dpc_sd^2 / obv_pep_dpc(t))} -- mean \code{obv_pep_dpc(t)}, variance
-\code{obv_pep_dpc_sd^2} (\code{CV = obv_pep_dpc_sd / obv_pep_dpc(t)}) -- giving individual
-variation in how quickly the drug is received post-exposure. The spread is a fixed absolute sd
-even when the mean varies over time (a fixed shape would instead hold the CV constant).}
+it is the standard deviation of the per-recipient DPC: each recipient draws an independent
+DPC from a Gamma reparameterised from (mean, sd) as
+\code{Gamma(shape = obv_pep_dpc(t)^2 / obv_pep_dpc_sd^2, scale = obv_pep_dpc_sd^2 / obv_pep_dpc(t))}
+-- mean \code{obv_pep_dpc(t)}, variance \code{obv_pep_dpc_sd^2} (\code{CV = obv_pep_dpc_sd / obv_pep_dpc(t)})
+-- giving individual variation in how quickly the drug is received post-exposure. The spread
+is a fixed absolute sd even when the mean varies over time (a fixed shape would instead hold
+the CV constant).}
 
 \item{obv_pep_efficacy}{NULL, numeric in \verb{[0, 1]}, or function(dpc). Selects the efficacy model.
 NULL or a scalar use the built-in \code{\link[=obv_pep_efficacy_from_dpc]{obv_pep_efficacy_from_dpc()}} curve, which is \strong{flat} by
@@ -247,13 +333,40 @@ pool). Defaults to 0.}
 yet implemented). Defaults to FALSE.}
 
 \item{seed}{Optional integer. RNG seed for reproducibility.}
+
+\item{ppe_efficacy_hcw}{Numeric in \verb{[0, 1]} or function(t). Per-layer efficacy of PPE/IPC at
+reducing hospital transmission; resolved at each candidate hospital transmission time.}
+
+\item{hospital_quarantine_efficacy}{Optional numeric in \verb{[0, 1]} or function(t). Direct
+post-admission hospital quarantine/ETU efficacy. If NULL, derived from \code{prop_etu}, \code{ipc_helper}
+and \code{etu_efficacy_baseline}.}
+
+\item{ipc_helper}{Numeric in \verb{[0, 1]} or function(t). IPC/response-maturity proxy; used when
+\code{hospital_quarantine_efficacy} is NULL.}
+
+\item{etu_efficacy_baseline}{Numeric in \verb{[0, 1]}. Baseline ETU/ETC transmission-blocking efficacy
+before IPC-maturity adjustment; used when \code{hospital_quarantine_efficacy} is NULL.}
 }
 \value{
 A named list with components:
 \describe{
 \item{\code{tdf}}{The simulated transmission tree: one row per realised
 infection, ordered by absolute infection time. Carries attributes
-\code{hcw_total}, \code{hcw_infected}, \code{hcw_remaining}, and \code{obv_pep_num_treated}.}
+\code{hcw_total}, \code{hcw_infected}, \code{hcw_remaining}, and \code{obv_pep_num_treated}.
+Each case also records the risk tier of the contact that produced it
+(\code{contact_risk_level}, \code{contact_risk_category}), whether that contact was
+traced (\code{traced}).}
+\item{\code{contact_log}}{Every contact generated over the run, one row each --
+including the contacts that never became infections. Columns: \code{parent},
+\code{case_id} (the \code{tdf} id for contacts that became cases, \code{NA} otherwise),
+\code{record_type} (\code{"contact"} or \code{"infection"}), \code{class},
+\code{infection_location}, \code{time_contact_relative}, \code{time_contact_absolute},
+\code{contact_risk_level}, \code{contact_risk_category}, \code{relative_risk},
+\code{transmission_prob} (the realised per-contact probability), \code{traced}, and
+\code{blocked_by} -- \code{NA} for realised infections, else \code{"no_transmission"}
+(the contact simply did not transmit), the route's intervention layer, or
+\code{"obv_pep"}. This is the denominator for anything contact-tracing or
+prophylaxis related.}
 \item{\code{prevented_completed}}{A data frame of the infections the OBV PEP gate
 prevented -- the averted index infections only, not their averted onward
 chains -- each replayed through the same outcome model as realised cases to

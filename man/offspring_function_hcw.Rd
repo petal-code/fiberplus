@@ -2,15 +2,20 @@
 % Please edit documentation in R/offspring_function_hcw.R
 \name{offspring_function_hcw}
 \alias{offspring_function_hcw}
-\title{Generate offspring for a healthcare-worker (HCW) parent with work-place and post-admission thinning}
+\title{Generate offspring for a healthcare-worker (HCW) parent}
 \usage{
 offspring_function_hcw(
   parent_info,
-  mn_offspring_hcw = NULL,
-  overdisp_offspring_hcw = NULL,
+  mn_contacts_hcw = NULL,
+  overdisp_contacts_hcw = NULL,
+  baseline_risk_hcw = NULL,
+  contact_risk_hcw = NULL,
   Tg_shape_hcw = NULL,
   Tg_rate_hcw = NULL,
   prob_hospital_cond_hcw_preAdm = NULL,
+  trace_coverage = 0,
+  return_contact_log = TRUE,
+  presymptomatic_transmission = TRUE,
   ppe_coverage_hcw = NULL,
   ppe_efficacy = NULL,
   prop_etu = NULL,
@@ -30,115 +35,101 @@ offspring_function_hcw(
 )
 }
 \arguments{
-\item{parent_info}{One-row data.frame/list containing parent infection, hospitalisation and outcome times.}
+\item{parent_info}{One-row data.frame/list containing parent infection, incubation,
+hospitalisation and outcome times.}
 
-\item{mn_offspring_hcw}{Positive numeric or function(t). Mean of the Negative Binomial offspring
-distribution for HCW parents (\code{rnbinom(mu = ..., size = ...)}). May be supplied as a single
-positive scalar or as a function of absolute calendar time (e.g. built with
-\code{\link{make_time_varying}}); when time-varying it is resolved at the parent's absolute
-infection time.}
+\item{mn_contacts_hcw}{Positive numeric or function(t). Mean of the Negative Binomial
+contact distribution for HCW parents, resolved at the parent's absolute infection time.}
 
-\item{overdisp_offspring_hcw}{Positive numeric. Negative Binomial \code{size} (overdispersion)
-for HCW parents.}
+\item{overdisp_contacts_hcw}{Positive numeric. Negative Binomial \code{size} of the
+contact distribution.}
 
-\item{Tg_shape_hcw}{Positive numeric. Shape of the Gamma generation-time distribution
-for HCW parents (before truncation).}
+\item{baseline_risk_hcw}{Numeric in \code{[0,1]} or function(t). Per-contact transmission
+probability for the reference risk tier, resolved at each contact's own calendar time.}
 
-\item{Tg_rate_hcw}{Positive numeric. Rate of the Gamma generation-time distribution
-for HCW parents (before truncation). Mean GT is \code{Tg_shape_hcw / Tg_rate_hcw}.}
+\item{contact_risk_hcw}{A \code{\link{make_contact_risk}} structure (or a named list of
+its arguments) for this route.}
 
-\item{prob_hospital_cond_hcw_preAdm}{Numeric in \code{[0,1]}. Probability that a pre-admission
-candidate infection occurs in the hospital setting while the HCW is working.}
+\item{Tg_shape_hcw}{Positive numeric. Shape of the Gamma generation-time distribution.}
 
-\item{ppe_coverage_hcw}{Numeric in \code{[0,1]} or function(t). Coverage: probability that an HCW
-(source or receiver) has PPE. Applied as a source layer when the HCW parent is still working
-pre-admission, and as an independent receiver layer whenever the recipient is an HCW; each layer
-thins by \code{ppe_coverage_hcw(t) * ppe_efficacy}, and the two combine multiplicatively for
-pre-admission hospital events with HCW recipients (keep-probability
-\eqn{(1 - \mathrm{ppe\_coverage\_hcw}(t)\,\mathrm{ppe\_efficacy})^2}). Coverage is resolved at the
-absolute calendar time of each candidate hospital transmission event in which PPE applies.}
+\item{Tg_rate_hcw}{Positive numeric. Rate of the Gamma generation-time distribution.}
 
-\item{ppe_efficacy}{Numeric in \code{[0,1]} (fixed scalar). Efficacy of PPE at preventing infection
-conditional on the HCW having it. Shared by the source and receiver PPE layers; combined with
-\code{ppe_coverage_hcw} as a single per-event thinning probability \code{ppe_coverage_hcw(t) * ppe_efficacy}.}
+\item{prob_hospital_cond_hcw_preAdm}{Numeric in \code{[0,1]}. Probability that a
+pre-admission contact occurs in the hospital setting while the HCW is working.}
 
-\item{prop_etu}{Numeric in \code{[0,1]} or function(t). Proportion of hospitalised cases managed
-in ETU/ETC care at time \code{t} (the time-varying "coverage" lever for hospital quarantine).
-The post-admission hospital quarantine efficacy is derived as the prop_etu(t)-weighted mixture
-\code{prop_etu(t) * etu_efficacy + (1 - prop_etu(t)) * general_hospital_quarantine_efficacy}.}
+\item{trace_coverage}{Numeric in \code{[0,1]} or function(t). Programme-level contact
+tracing coverage, multiplying each tier's \code{trace_prob}.}
 
-\item{etu_efficacy}{Numeric in \code{[0,1]} (fixed scalar). Post-admission quarantine efficacy
-for cases managed in ETU/ETC care.}
+\item{return_contact_log}{Logical scalar. \code{FALSE} skips building the contact log for
+this parent and returns an empty one, saving the per-parent data.frame construction. See
+\code{\link{branching_process_main}} for why that matters at scale.}
 
-\item{general_hospital_quarantine_efficacy}{Numeric in \code{[0,1]} (fixed scalar). Post-admission
-quarantine efficacy for cases managed in general (non-ETU) hospital care.}
+\item{presymptomatic_transmission}{Logical scalar. \code{TRUE} (default) lets contacts occur
+before the parent's symptom onset; \code{FALSE} truncates contact times to start at the end
+of the parent's incubation period.}
 
-\item{obv_pep_enabled}{Logical scalar. If TRUE, applies an OBV PEP infection-prevention
-gate around the Swiss-cheese thinning step. The gate composes multiplicatively with the
-PPE/quarantine layers: a candidate must survive every protective layer (PPE source,
-PPE receiver, hospital quarantine) AND not be prevented by OBV efficacy to appear as a
-realised infection. See \code{apply_obv_pep_gate()} for the two-phase semantics.}
+\item{ppe_coverage_hcw}{Numeric in \code{[0,1]} or function(t). Coverage: probability that
+an HCW (source or receiver) has PPE. Each PPE layer thins by
+\code{ppe_coverage_hcw(t) * ppe_efficacy}.}
 
-\item{obv_pep_coverage}{Numeric in \code{[0,1]} or function(t). Probability a
-pre-thinning eligible candidate receives OBV at calendar time \code{t}.}
+\item{ppe_efficacy}{Numeric in \code{[0,1]} (fixed scalar). Efficacy of PPE conditional on
+the HCW having it. Shared by the source and receiver layers.}
 
-\item{obv_pep_adherence}{Numeric in \code{[0,1]} or function(t). Probability an OBV recipient
-adheres sufficiently for efficacy to apply.}
+\item{prop_etu}{Numeric in \code{[0,1]} or function(t). Proportion of hospitalised cases
+managed in ETU/ETC care.}
 
-\item{obv_pep_dpc}{Non-negative numeric or function(t). Days post challenge/exposure to first
-dose. The simplest working assumption is \code{obv_pep_dpc = 1}. When
-\code{obv_pep_dpc_sd} is set this is the \emph{mean} of the per-recipient DPC draw.}
+\item{etu_efficacy}{Numeric in \code{[0,1]} (fixed scalar). Post-admission quarantine
+efficacy in ETU/ETC care.}
 
-\item{obv_pep_dpc_sd}{NULL or a single positive numeric. NULL (default) keeps DPC
-deterministic at \code{obv_pep_dpc}; if set, it is the standard deviation of each
-recipient's DPC, drawn from a Gamma with mean \code{obv_pep_dpc(t)} and this fixed sd
-(a fixed absolute spread), adding individual variation in time-to-treatment. See
-\code{apply_obv_pep_gate()}.}
+\item{general_hospital_quarantine_efficacy}{Numeric in \code{[0,1]} (fixed scalar).
+Post-admission quarantine efficacy in general hospital care.}
 
-\item{obv_pep_efficacy}{NULL, numeric in \code{[0,1]}, or function(dpc). NULL or a scalar use the
-built-in \code{obv_pep_efficacy_from_dpc()} curve (flat by default; a scalar is the constant
-efficacy / \code{E0}); a function(dpc) is used as-is. See \code{apply_obv_pep_gate()}.}
+\item{obv_pep_enabled, obv_pep_coverage, obv_pep_adherence, obv_pep_dpc, obv_pep_dpc_sd}{Obeldesivir
+PEP gate settings; see \code{\link{offspring_function_genPop}}.}
 
-\item{obv_pep_efficacy_args}{NULL or a named list of overrides for the built-in
-\code{obv_pep_efficacy_from_dpc()} curve (e.g. \code{list(shape = "logistic", d50 = 4)} for DPC
-decay), applied when \code{obv_pep_efficacy} is NULL or a scalar. See \code{apply_obv_pep_gate()}.}
+\item{obv_pep_efficacy, obv_pep_efficacy_args, obv_pep_target_class, obv_pep_target_locations}{Further
+obeldesivir PEP gate settings; see \code{\link{offspring_function_genPop}}.}
 
-\item{obv_pep_target_class}{Character vector of offspring classes eligible for OBV PEP.
-Defaults to \code{"HCW"}.}
+\item{prob_hcw_cond_hcw_comm}{Numeric in \code{[0,1]}. Probability a community-located
+contact of an HCW parent is an HCW.}
 
-\item{obv_pep_target_locations}{Character vector of exposure settings eligible for OBV PEP.
-Defaults to \code{"hospital"} for HCW occupational exposures.}
-
-\item{prob_hcw_cond_hcw_comm}{Numeric in \code{[0,1]}. Probability that a community-located
-offspring generated by an HCW parent is an HCW.}
-
-\item{prob_hcw_cond_hcw_hospital}{Numeric in \code{[0,1]}. Probability that a hospital-located
-offspring generated by an HCW parent is an HCW.}
+\item{prob_hcw_cond_hcw_hospital}{Numeric in \code{[0,1]}. Probability a hospital-located
+contact of an HCW parent is an HCW.}
+}
+\value{
+A data.frame with one row per realised infection, plus the full contact log
+attached as the \code{"contact_log"} attribute. See
+\code{\link{offspring_function_genPop}} for the column list.
 }
 \description{
-Simulates secondary infections (offspring) generated by a \strong{healthcare-worker} parent.
-The number of candidate offspring is drawn from a Negative Binomial distribution.
-Candidate infection times are drawn from a \strong{truncated Gamma} generation-time distribution
-on \eqn{[0, t_\mathrm{outcome}]}. For HCW parents, \strong{pre-admission} candidate infections
-may occur in the \strong{hospital} (while working) or in the \strong{community}: each pre-admission
-event is assigned to the hospital with probability \code{prob_hospital_cond_hcw_preAdm}
-and to the community otherwise. Candidate events occurring at or after the parent's
-hospitalisation time are always labelled \code{"hospital"}. Each offspring is then assigned
-a class (\code{"HCW"} or \code{"genPop"}) using setting-specific probabilities, and hospital
-events are thinned by three multiplicatively-combined protective layers, each applied only
-where it is relevant:
-\itemize{
-\item Source PPE worn by the still-working HCW parent applies to all pre-admission
-hospital events (any recipient class).
-\item Receiver PPE worn by HCW recipients while treating the source applies to all
-hospital events with an HCW recipient (pre- or post-admission).
-\item Hospital quarantine applies to all post-admission hospital events (source is now
-a hospitalised, isolated HCW patient).
+Simulates the contacts made by a \strong{healthcare-worker} parent and the subset of those
+contacts that become secondary infections.
 }
-Hospital keep-probability is therefore
-\eqn{(1 - \mathrm{ppe\_cov}(t)\,\mathrm{ppe\_eff} \cdot \mathbb{1}[\text{pre-admission}]) (1 - \mathrm{ppe\_cov}(t)\,\mathrm{ppe\_eff} \cdot \mathbb{1}[\text{HCW recipient}]) (1 - \mathrm{hq}(t) \cdot \mathbb{1}[\text{post-admission}])},
-where each PPE layer thins by coverage times conditional efficacy. Time-varying inputs are
-resolved at the absolute calendar time of each candidate hospital transmission event.
-The post-admission hospital quarantine efficacy is calculated internally as a
-\code{prop_etu(t)}-weighted mixture of the (fixed) ETU and general-hospital quarantine efficacies.
+\details{
+The number of \strong{contacts} is drawn from a Negative Binomial distribution and contact
+times from a \strong{truncated Gamma} generation-time distribution on
+\eqn{[0, t_\mathrm{outcome}]}. For HCW parents, \strong{pre-admission} contacts may occur in
+the \strong{hospital} (while working, with probability
+\code{prob_hospital_cond_hcw_preAdm}) or in the \strong{community}; contacts at or after the
+parent's own admission are always in the hospital. Each contact is assigned a class
+(\code{"HCW"} or \code{"genPop"}) and a \strong{risk tier} from \code{contact_risk_hcw}, and
+transmits with probability \code{baseline_risk_hcw(t) * relative_risk[tier]} resolved at
+that contact's own calendar time.
+
+Contacts that transmit are thinned by three multiplicatively-combined protective layers,
+each applied only where relevant:
+\itemize{
+\item \strong{Source PPE} worn by the still-working HCW parent: all pre-admission hospital
+events, any recipient class.
+\item \strong{Receiver PPE} worn by HCW recipients: all hospital events with an HCW
+recipient, pre- or post-admission.
+\item \strong{Hospital quarantine}: all post-admission hospital events.
+}
+
+Setting \code{presymptomatic_transmission = FALSE} truncates contact times to start at the
+end of the parent's incubation period; see \code{\link{offspring_function_genPop}}.
+
+Every contact is independently marked as traced, with probability
+\code{trace_coverage(t) * trace_prob[tier]}; traced status travels with contacts that
+become cases.
 }

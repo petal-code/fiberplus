@@ -61,10 +61,11 @@ control_overrides <- list(
 run_bench <- function(seed, check_final_size = CAP) {
   do.call(run_sim, c(
     list(seed = seed,
+         check_presymptomatic = FALSE,
          check_final_size     = check_final_size,
-         mn_offspring_genPop  = OFFSPRING_MEAN,
-         mn_offspring_hcw     = OFFSPRING_MEAN,
-         mn_offspring_funeral = OFFSPRING_MEAN),
+         mn_contacts_genPop  = OFFSPRING_MEAN,
+         mn_contacts_hcw     = OFFSPRING_MEAN,
+         mn_contacts_funeral = OFFSPRING_MEAN),
     control_overrides
   ))
 }

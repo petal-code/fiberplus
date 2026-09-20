@@ -206,16 +206,19 @@ test_that("resolve_time_varying does NOT warn for vectorised function returning 
 
 bpm_args <- function(...) {
   defaults <- list(
-    mn_offspring_genPop           = 1.0,
-    overdisp_offspring_genPop     = 0.5,
+    mn_contacts_genPop           = 1.0,
+    baseline_risk_genPop           = 1,
+    overdisp_contacts_genPop     = 0.5,
     Tg_shape_genPop               = 2,
     Tg_rate_genPop                = 0.15,
-    mn_offspring_hcw              = 1.0,
-    overdisp_offspring_hcw        = 0.5,
+    mn_contacts_hcw              = 1.0,
+    baseline_risk_hcw              = 1,
+    overdisp_contacts_hcw        = 0.5,
     Tg_shape_hcw                  = 2,
     Tg_rate_hcw                   = 0.15,
-    mn_offspring_funeral          = 1.0,
-    overdisp_offspring_funeral    = 0.5,
+    mn_contacts_funeral          = 1.0,
+    baseline_risk_funeral          = 1,
+    overdisp_contacts_funeral    = 0.5,
     Tg_shape_funeral              = 10,
     Tg_rate_funeral               = 5,
     incubation_period             = fixed_inc,
@@ -248,6 +251,8 @@ bpm_args <- function(...) {
     prob_hcw_cond_funeral_genPop  = 0.05,
     population                    = 5000,
     hcw_per_capita                = 0.02,
+    check_presymptomatic = FALSE,
+    quiet                = TRUE,   # these runs sit at a tiny cap; the censoring warning is expected
     check_final_size              = 50,
     seeding_cases                 = 2,
     seed                          = 1L

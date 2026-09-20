@@ -1,7 +1,8 @@
 summarise_output <- function(
     tdf,
-    subset   = "realised_subset",
-    sim_info = NULL   # optional list from branching_process_main
+    subset      = "realised_subset",
+    sim_info    = NULL,  # optional list from branching_process_main
+    contact_log = NULL   # optional contact log from branching_process_main
 ) {
 
   ##--------------------------------------------------------------
@@ -192,7 +193,80 @@ summarise_output <- function(
   } else NA_real_
 
   ##--------------------------------------------------------------
-  ## 6. Return a named list
+  ## 6. Contact tracing among realised cases
+  ##
+  ## `traced` records whether the CONTACT that produced this case was reached by
+  ## tracing. Seed cases are never traced (no index case to trace them from).
+  ##--------------------------------------------------------------
+  if (!is.null(tdf$traced)) {
+    n_cases_traced    <- sum(tdf$traced & subset_vector, na.rm = TRUE)
+    prop_cases_traced <- if (n_cases_total > 0) n_cases_traced / n_cases_total else NA_real_
+  } else {
+    n_cases_traced <- NA_real_
+    prop_cases_traced <- NA_real_
+  }
+
+  ## Risk-tier breakdown of realised cases. The tier mix among cases is risk-weighted
+  ## relative to the tier mix among contacts, since higher-risk contacts are more likely
+  ## to become cases.
+  ## table() on a character column sorts alphabetically, which scrambles the tiers
+  ## whenever they carry real names ("casual", "household", ...) rather than
+  ## numbered ones. Since the whole point of these breakdowns is that the numbers
+  ## should rise with risk, order the levels by the tier index instead.
+  tier_levels <- function(level, category) {
+    ok <- !is.na(level) & !is.na(category)
+    if (!any(ok)) return(character(0))
+    m <- unique(data.frame(l = level[ok], c = as.character(category[ok])))
+    m$c[order(m$l)]
+  }
+  tier_table <- function(level, category) {
+    lv <- tier_levels(level, category)
+    if (length(lv) == 0L) return(table(factor(character(0))))
+    table(factor(as.character(category), levels = lv), useNA = "no")
+  }
+
+  cases_by_risk_tier <- if (!is.null(tdf$contact_risk_category)) {
+    tier_table(tdf$contact_risk_level[subset_vector],
+               tdf$contact_risk_category[subset_vector])
+  } else NULL
+
+  ##--------------------------------------------------------------
+  ## 7. Contact-level summary (requires the run's contact_log)
+  ##
+  ## This is the denominator a contact-tracing or prophylaxis programme actually
+  ## faces: every exposure generated, not just the ones that became infections.
+  ##--------------------------------------------------------------
+  if (!is.null(contact_log) && nrow(contact_log) > 0) {
+    n_contacts_total    <- nrow(contact_log)
+    n_contacts_traced   <- sum(contact_log$traced, na.rm = TRUE)
+    n_contacts_infected <- sum(contact_log$record_type == "infection", na.rm = TRUE)
+
+    contacts_by_risk_tier <- tier_table(contact_log$contact_risk_level,
+                                        contact_log$contact_risk_category)
+    contacts_by_location  <- table(contact_log$infection_location, useNA = "no")
+
+    ## Realised per-tier attack rate: of the contacts in each tier, what share became
+    ## cases. Reflects the tier's relative risk after intervention thinning.
+    infected_by_tier <- table(
+      factor(contact_log$contact_risk_category[contact_log$record_type == "infection"],
+             levels = names(contacts_by_risk_tier))
+    )
+    attack_rate_by_risk_tier <- as.numeric(infected_by_tier) / as.numeric(contacts_by_risk_tier)
+    names(attack_rate_by_risk_tier) <- names(contacts_by_risk_tier)
+
+    blocked_by_reason <- table(contact_log$blocked_by, useNA = "no")
+
+    prop_contacts_traced <- n_contacts_traced / n_contacts_total
+    contacts_per_case    <- if (n_cases_total > 0) n_contacts_total / n_cases_total else NA_real_
+  } else {
+    n_contacts_total <- n_contacts_traced <- n_contacts_infected <- NA_real_
+    prop_contacts_traced <- contacts_per_case <- NA_real_
+    contacts_by_risk_tier <- contacts_by_location <- NULL
+    attack_rate_by_risk_tier <- blocked_by_reason <- NULL
+  }
+
+  ##--------------------------------------------------------------
+  ## 8. Return a named list
   ##--------------------------------------------------------------
   out <- list(
     ## Outbreak timing
@@ -248,7 +322,28 @@ summarise_output <- function(
     n_obv_pep_eligible_cases          = n_obv_pep_eligible_cases,
     n_obv_pep_treated_cases           = n_obv_pep_treated_cases,
     n_obv_pep_breakthroughs           = n_obv_pep_breakthroughs,
-    prop_obv_pep_prevented_among_adherent = prop_obv_pep_prevented_among_adherent
+    prop_obv_pep_prevented_among_adherent = prop_obv_pep_prevented_among_adherent,
+
+    ## Was this run censored by check_final_size? A censored final size measures the
+    ## cap rather than transmission, so anything comparing final sizes must check this.
+    hit_final_size_cap       = if (!is.null(sim_info$hit_final_size_cap)) sim_info$hit_final_size_cap else NA,
+    stop_reason              = if (!is.null(sim_info$stop_reason)) sim_info$stop_reason else NA_character_,
+
+    ## Contact tracing among realised cases
+    n_cases_traced           = n_cases_traced,
+    prop_cases_traced        = prop_cases_traced,
+    cases_by_risk_tier       = cases_by_risk_tier,
+
+    ## Contact-level counts (NA unless the run's contact_log was supplied)
+    n_contacts_total         = n_contacts_total,
+    n_contacts_traced        = n_contacts_traced,
+    n_contacts_infected      = n_contacts_infected,
+    prop_contacts_traced     = prop_contacts_traced,
+    contacts_per_case        = contacts_per_case,
+    contacts_by_risk_tier    = contacts_by_risk_tier,
+    contacts_by_location     = contacts_by_location,
+    attack_rate_by_risk_tier = attack_rate_by_risk_tier,
+    contacts_blocked_by      = blocked_by_reason
   )
 
   return(out)

@@ -72,8 +72,9 @@ test_that("genPop parent: PPE thins HCW recipients at hospital (Issue A)", {
   set.seed(42)
   result <- offspring_function_genPop(
     parent_info                   = parent,
-    mn_offspring_genPop           = 500,
-    overdisp_offspring_genPop     = 200,
+    mn_contacts_genPop           = 500,
+    baseline_risk_genPop           = 1,
+    overdisp_contacts_genPop     = 200,
     Tg_shape_genPop               = 4,
     Tg_rate_genPop                = 1,
     prop_etu                      = 1,
@@ -100,8 +101,9 @@ test_that("genPop parent: full hospital quarantine (hq = 1) zeroes all hospital 
   set.seed(7)
   result <- offspring_function_genPop(
     parent_info                   = parent,
-    mn_offspring_genPop           = 500,
-    overdisp_offspring_genPop     = 200,
+    mn_contacts_genPop           = 500,
+    baseline_risk_genPop           = 1,
+    overdisp_contacts_genPop     = 200,
     Tg_shape_genPop               = 4,
     Tg_rate_genPop                = 1,
     prop_etu                      = 1,
@@ -125,8 +127,9 @@ test_that("HCW post-admission parent: receiver PPE thins HCW recipients (Issue B
   set.seed(99)
   result <- offspring_function_hcw(
     parent_info                     = parent,
-    mn_offspring_hcw                = 500,
-    overdisp_offspring_hcw          = 200,
+    mn_contacts_hcw                = 500,
+    baseline_risk_hcw                = 1,
+    overdisp_contacts_hcw          = 200,
     Tg_shape_hcw                    = 4,
     Tg_rate_hcw                     = 1,
     prob_hospital_cond_hcw_preAdm   = 0.5,
@@ -153,8 +156,9 @@ test_that("HCW pre-admission only: source PPE blocks all hospital events", {
   set.seed(77)
   result <- offspring_function_hcw(
     parent_info                     = parent,
-    mn_offspring_hcw                = 500,
-    overdisp_offspring_hcw          = 200,
+    mn_contacts_hcw                = 500,
+    baseline_risk_hcw                = 1,
+    overdisp_contacts_hcw          = 200,
     Tg_shape_hcw                    = 4,
     Tg_rate_hcw                     = 1,
     prob_hospital_cond_hcw_preAdm   = 0.5,
@@ -185,8 +189,9 @@ test_that("HCW pre-admission HCW receiver: multiplicative PPE produces (1-ppe)^2
   set.seed(123)
   result <- offspring_function_hcw(
     parent_info                     = parent,
-    mn_offspring_hcw                = 8000,
-    overdisp_offspring_hcw          = 5000,
+    mn_contacts_hcw                = 8000,
+    baseline_risk_hcw                = 1,
+    overdisp_contacts_hcw          = 5000,
     Tg_shape_hcw                    = 4,
     Tg_rate_hcw                     = 1,
     prob_hospital_cond_hcw_preAdm   = 0.5,
@@ -218,8 +223,9 @@ test_that("Funeral: safe funeral with efficacy = 1 produces zero offspring", {
   set.seed(55)
   result <- offspring_function_funeral(
     parent_info                  = parent,
-    mn_offspring_funeral         = 200,
-    overdisp_offspring_funeral   = 100,
+    mn_contacts_funeral         = 200,
+    baseline_risk_funeral         = 1,
+    overdisp_contacts_funeral   = 100,
     Tg_shape_funeral             = 10,
     Tg_rate_funeral              = 5,
     safe_funeral_efficacy        = 1,
@@ -241,8 +247,9 @@ test_that("Funeral: safe funeral with efficacy = 0 behaves like unsafe", {
   set.seed(31)
   res_unsafe <- offspring_function_funeral(
     parent_info                  = parent_unsafe,
-    mn_offspring_funeral         = 200,
-    overdisp_offspring_funeral   = 100,
+    mn_contacts_funeral         = 200,
+    baseline_risk_funeral         = 1,
+    overdisp_contacts_funeral   = 100,
     Tg_shape_funeral             = 10,
     Tg_rate_funeral              = 5,
     safe_funeral_efficacy        = 0,
@@ -253,8 +260,9 @@ test_that("Funeral: safe funeral with efficacy = 0 behaves like unsafe", {
   set.seed(31)
   res_safe <- offspring_function_funeral(
     parent_info                  = parent_safe,
-    mn_offspring_funeral         = 200,
-    overdisp_offspring_funeral   = 100,
+    mn_contacts_funeral         = 200,
+    baseline_risk_funeral         = 1,
+    overdisp_contacts_funeral   = 100,
     Tg_shape_funeral             = 10,
     Tg_rate_funeral              = 5,
     safe_funeral_efficacy        = 0,
@@ -275,8 +283,9 @@ test_that("PPE: equal coverage*efficacy products give identical draws (genPop)",
   set.seed(2024)
   res_a <- offspring_function_genPop(
     parent_info                   = parent,
-    mn_offspring_genPop           = 500,
-    overdisp_offspring_genPop     = 200,
+    mn_contacts_genPop           = 500,
+    baseline_risk_genPop           = 1,
+    overdisp_contacts_genPop     = 200,
     Tg_shape_genPop               = 4,
     Tg_rate_genPop                = 1,
     prop_etu                      = 1,
@@ -291,8 +300,9 @@ test_that("PPE: equal coverage*efficacy products give identical draws (genPop)",
   set.seed(2024)
   res_b <- offspring_function_genPop(
     parent_info                   = parent,
-    mn_offspring_genPop           = 500,
-    overdisp_offspring_genPop     = 200,
+    mn_contacts_genPop           = 500,
+    baseline_risk_genPop           = 1,
+    overdisp_contacts_genPop     = 200,
     Tg_shape_genPop               = 4,
     Tg_rate_genPop                = 1,
     prop_etu                      = 1,
@@ -315,8 +325,9 @@ test_that("PPE: equal coverage*efficacy products give identical draws (HCW)", {
   set.seed(321)
   res_a <- offspring_function_hcw(
     parent_info                     = parent,
-    mn_offspring_hcw                = 4000,
-    overdisp_offspring_hcw          = 2000,
+    mn_contacts_hcw                = 4000,
+    baseline_risk_hcw                = 1,
+    overdisp_contacts_hcw          = 2000,
     Tg_shape_hcw                    = 4,
     Tg_rate_hcw                     = 1,
     prob_hospital_cond_hcw_preAdm   = 0.5,
@@ -332,8 +343,9 @@ test_that("PPE: equal coverage*efficacy products give identical draws (HCW)", {
   set.seed(321)
   res_b <- offspring_function_hcw(
     parent_info                     = parent,
-    mn_offspring_hcw                = 4000,
-    overdisp_offspring_hcw          = 2000,
+    mn_contacts_hcw                = 4000,
+    baseline_risk_hcw                = 1,
+    overdisp_contacts_hcw          = 2000,
     Tg_shape_hcw                    = 4,
     Tg_rate_hcw                     = 1,
     prob_hospital_cond_hcw_preAdm   = 0.5,
@@ -359,8 +371,9 @@ test_that("PPE: efficacy modulates thinning at fixed (full) coverage (genPop)", 
   set.seed(11)
   res_eff0 <- offspring_function_genPop(
     parent_info                   = parent,
-    mn_offspring_genPop           = 500,
-    overdisp_offspring_genPop     = 200,
+    mn_contacts_genPop           = 500,
+    baseline_risk_genPop           = 1,
+    overdisp_contacts_genPop     = 200,
     Tg_shape_genPop               = 4,
     Tg_rate_genPop                = 1,
     prop_etu                      = 1,
@@ -378,8 +391,9 @@ test_that("PPE: efficacy modulates thinning at fixed (full) coverage (genPop)", 
   set.seed(11)
   res_eff1 <- offspring_function_genPop(
     parent_info                   = parent,
-    mn_offspring_genPop           = 500,
-    overdisp_offspring_genPop     = 200,
+    mn_contacts_genPop           = 500,
+    baseline_risk_genPop           = 1,
+    overdisp_contacts_genPop     = 200,
     Tg_shape_genPop               = 4,
     Tg_rate_genPop                = 1,
     prop_etu                      = 1,
@@ -401,8 +415,9 @@ test_that("PPE: ppe_efficacy must be a scalar in [0, 1]", {
   expect_error(
     offspring_function_genPop(
       parent_info                   = parent,
-      mn_offspring_genPop           = 10,
-      overdisp_offspring_genPop     = 5,
+      mn_contacts_genPop           = 10,
+      baseline_risk_genPop           = 1,
+      overdisp_contacts_genPop     = 5,
       Tg_shape_genPop               = 4,
       Tg_rate_genPop                = 1,
       prop_etu                      = 1,

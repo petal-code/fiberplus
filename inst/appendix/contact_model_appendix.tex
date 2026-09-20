@@ -1,0 +1,193 @@
+\documentclass[9pt,letterpaper]{extarticle}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{mathptmx}          % Times for mathematics (approximates Cambria Math)
+\usepackage{helvet}            % Helvetica for body text (approximates Arial)
+\renewcommand{\familydefault}{\sfdefault}
+\usepackage{amsmath,amssymb}
+\usepackage[letterpaper,top=1.7cm,bottom=1.7cm,left=1.75cm,right=1.75cm]{geometry}
+\usepackage{booktabs}
+\usepackage{titlesec}
+\usepackage{caption}
+\usepackage{microtype}
+\usepackage{fancyhdr}
+
+\titleformat{\subsection}{\bfseries\normalsize}{\thesubsection}{0.6em}{}
+\titlespacing{\subsection}{0pt}{6pt}{2pt}
+\renewcommand{\thesubsection}{\arabic{section}.\arabic{subsection}}
+
+\captionsetup{font=small,labelfont=bf,skip=3pt}
+\linespread{1.0}
+\setlength{\parskip}{2.5pt}
+\setlength{\parindent}{0pt}
+\setlength{\abovedisplayskip}{4pt}
+\setlength{\belowdisplayskip}{4pt}
+\setlength{\abovedisplayshortskip}{3pt}
+\setlength{\belowdisplayshortskip}{3pt}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyfoot[C]{\small\thepage}
+\renewcommand{\headrulewidth}{0pt}
+
+\newcommand{\NB}{\mathrm{NegBin}}
+\newcommand{\TG}{\mathrm{TruncGamma}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Prob}{\mathbb{P}}
+
+\begin{document}
+
+{\bfseries\large a2. Supplementary Methods: Contact-Structured Transmission and Contact Tracing}
+
+\setcounter{section}{2}
+\setcounter{subsection}{0}
+
+\subsection{Overview and relation to the offspring-based formulation}
+
+In the formulation of Section~1.2, the negative binomial draw made by each infector returned the number of \emph{secondary infections} that infector produced, and every intervention acted by removing infections from that draw. Exposure events that did not result in transmission were never represented. This is sufficient for interventions acting on an infectious case --- isolation after admission, or a safe and dignified burial --- but provides no denominator for interventions acting on \emph{exposed contacts}, such as contact tracing, and folds all heterogeneity in exposure intensity into a single mean. We therefore restructured transmission so that the negative binomial draw returns the number of \emph{contacts}, from which infections are then sampled. Each contact is allocated to one of $L$ risk tiers, and the tier governs both the probability that the contact results in transmission and the probability that it is successfully traced. Contacts that transmit are assigned a setting and host class, and thinned by the intervention layers of Steps~2--4 of Section~1.2, all unchanged. The revision reduces \emph{exactly} to the offspring-based formulation under a flat tier structure (Section~2.3). Quantities are indexed by route $R \in \{G, H, F\}$ --- general population, health-care worker, funeral --- and parameterised independently for each.
+
+\subsection{Contact generation and risk-structured transmission}
+
+\textbf{Step 1: Drawing the number of contacts.} For a parent $i$ of class $j$ infected at absolute time $t_i$, the number of contacts generated over the infectious period is
+\begin{equation}
+C_i \;\sim\; \NB\!\left(\text{mean} = c_j(t_i),\; \text{size} = k_j\right),
+\end{equation}
+with $c_j(\cdot)$ the class-specific mean contact number and $k_j$ the overdispersion parameter. As in Section~1.2, $c_j$ may be scalar or a function of calendar time, resolved once per parent immediately before the draw; the funeral mean $c_F$ is evaluated at the parent's time of death rather than infection, since the funeral occurs then.
+
+\textbf{Step 2: Timing each contact.} Each contact $m = 1,\dots,C_i$ is assigned a time relative to the parent's infection, drawn from the route's Gamma generation-interval distribution truncated to the parent's infectious period,
+\begin{equation}
+\tau_{im} \;\sim\; \TG\!\left(\alpha_j,\, \beta_j;\; a_i,\, T_i^{\mathrm{out}}\right),
+\qquad
+a_i =
+\begin{cases}
+0 & \text{presymptomatic transmission permitted,}\\
+E_i & \text{presymptomatic transmission removed,}
+\end{cases}
+\end{equation}
+where $T_i^{\mathrm{out}}$ is the interval from infection to the parent's own outcome and $E_i$ their incubation period (Section~2.6). Truncation is exact, by inverse-transform sampling on $[F_{\mathrm{GT}}(a_i), F_{\mathrm{GT}}(T_i^{\mathrm{out}})]$, which is distributionally identical to rejection sampling with unlimited retries. The absolute contact time is $t_{im} = t_i + \tau_{im}$.
+
+\textbf{Step 3: Allocating a risk tier and resolving transmission.} Each contact is independently allocated to a tier $Z_{im} \in \{1,\dots,L\}$, and transmits conditional on that tier:
+\begin{equation}
+\Prob(Z_{im} = l) = \varphi_l, \quad \textstyle\sum_{l} \varphi_l = 1;
+\qquad\qquad
+\Prob\!\left(X_{im} = 1 \,\middle|\, Z_{im} = l\right) \;=\; \pi_R(t_{im})\,\rho_l .
+\end{equation}
+Here $\varphi_l$ is the share of contacts in tier $l$, $\rho_l$ its relative risk, and $\pi_R(\cdot)$ the route's baseline per-contact transmission probability. Note that $\pi_R$ is evaluated at the \emph{contact's own} calendar time $t_{im}$, not at the parent's infection time, so time-varying transmissibility acts on exposures as they occur. The default is $L = 5$ equal tiers with flat relative risk; any number is permitted, and a constructor generates a log-spaced gradient from a single spread parameter.
+
+Relative risks are normalised against a nominated reference tier $l^{*}$, as $\rho_l = r_l / r_{l^{*}}$, so that $\rho_{l^{*}} = 1$ and $\pi_R$ is the per-contact transmission probability of a reference-tier exposure. \textbf{We take the reference to be the highest-risk tier by default}, $l^{*} = \arg\max_l r_l$, so that $\rho_l \in (0,1]$ and $\pi_R$ is the transmission probability of the riskiest exposure --- a household or caregiving contact, which is what reported secondary attack rates measure. Three considerations motivate this. First, the requirement that no tier's transmission probability exceed one,
+\begin{equation}
+\sup_{t}\; \pi_R(t) \cdot \max_l \rho_l \;\le\; 1 ,
+\end{equation}
+then reduces to $\pi_R \le 1$ and can never bind, whereas anchoring on the lowest-risk tier leaves an upper bound on $\pi_R$ that moves with the relative-risk spread --- with risks spanning a 25-fold range, the baseline would be silently capped at $0{\cdot}04$. Second, $\pi_R$ and $\rho$ then occupy $[0,1]$ independently, giving the ABC calibration of Section~1.5 a rectangular parameter space rather than one whose bounds shift as the spread is itself fitted. Third, $\pi_R$ is anchored to a measurable quantity rather than to the unobservable rate of transmission at casual contact. Because only the product $\pi_R \rho_l$ enters the simulation, nominating a different reference is a pure reparameterisation and cannot alter a simulated outcome; condition~(4) is checked on a grid across the simulation horizon before a run begins rather than enforced by clipping during it.
+
+\subsection{Equivalence to the offspring-based formulation, and the tier composition of cases}
+
+Because tiers are allocated independently across contacts, the marginal transmission probability of a contact, before its tier is known, does not depend on which tier it occupies:
+\begin{equation}
+\Prob(X_{im} = 1) \;=\; \sum_{l=1}^{L} \varphi_l \,\pi_R \rho_l \;=\; \pi_R\,\bar{\rho},
+\qquad
+\bar{\rho} \;\equiv\; \sum_{l=1}^{L} \varphi_l \rho_l .
+\end{equation}
+Independent Bernoulli thinning of a negative binomial variate returns a negative binomial variate with unchanged size parameter, so the number of secondary infections generated by parent $i$ is
+\begin{equation}
+C_i^{\mathrm{inf}} \;\sim\; \NB\!\left(\text{mean} = c_j \,\pi_R\, \bar{\rho},\; \text{size} = k_j\right).
+\end{equation}
+Two consequences follow. Setting $\rho_l \equiv 1$ and $\pi_R = 1$ recovers the offspring distribution of Section~1.2 identically, with $c_j$ equal to the former class-specific transmissibility; the reduction is exact, not approximate. And independent per-contact heterogeneity contributes no additional variance in offspring number, so it generates no superspreading of its own --- overdispersion remains governed entirely by $k_j$, and the tiers acquire epidemiological consequence only where something downstream conditions on them, which here is contact tracing.
+
+A corollary of (5) is that the tier composition of realised infections is not that of contacts. By Bayes' theorem,
+\begin{equation}
+\psi_l \;\equiv\; \Prob\!\left(Z_{im} = l \,\middle|\, X_{im} = 1\right) \;=\; \frac{\varphi_l \rho_l}{\bar{\rho}} ,
+\end{equation}
+so cases over-represent high-risk tiers. Any quantity conditioned on the tier in which a case was infected --- which includes whether it was traced --- must be averaged over $\psi$, not $\varphi$. In the structure of Table~S1, a programme tracing the two highest-risk tiers reaches $30\%$ of contacts but $48\%$ of cases.
+
+\subsection{Contact tracing and its effect on the probability and timing of hospitalisation}
+
+Every contact, whether or not it transmits, is independently marked as traced with probability
+\begin{equation}
+\Prob\!\left(Y_{im} = 1 \,\middle|\, Z_{im} = l\right) \;=\; \chi(t_{im})\,\kappa_l ,
+\end{equation}
+where $\chi(\cdot) \in [0,1]$ is a time-varying programme coverage and $\kappa_l$ the fixed traceability of tier $l$. This follows the coverage-versus-efficacy factorisation used for the non-pharmaceutical interventions of Section~1.2: $\chi$ is the lever that strengthens as the response matures, while $\kappa$ describes which exposures are enumerable in principle. Drawing $Y_{im}$ for every contact rather than only for those that transmit means the model records the true programme denominator --- the number of individuals a tracing team would have had to enumerate, not the number who went on to be infected. Traced status is carried by any contact that becomes a case; seeding infections have no originating contact and are never traced.
+
+The model contains no pre-admission isolation state. The only transmission-reducing condition an infectious individual can occupy is post-admission isolation, with retention probability $1 - \eta(t)$ in the notation of Step~3 of Section~1.2. Contact tracing therefore acts on transmission solely by delivering cases into that state sooner and more often, through two explicit mechanisms and one implicit one.
+
+\textbf{Timing of admission.} Writing $\Delta_i$ for the onset-to-admission delay drawn for case $i$, $g(\cdot)$ for the time-varying delay-scaling factor of Step~5 and $s_i$ for the symptom-onset time, the admission delay of a traced case is capped at a flat value $d_T$:
+\begin{equation}
+D_i \;=\;
+\begin{cases}
+\min\!\left\{\Delta_i\, g(s_i),\; d_T\right\} & \text{if } Y_i = 1,\\
+\Delta_i\, g(s_i) & \text{otherwise.}
+\end{cases}
+\end{equation}
+The minimum in (9) is deliberate: tracing may bring an admission forward but can never postpone one, so a scenario cannot be made to worsen outcomes through this channel by a careless choice of $d_T$. A value of $d_T$ above the untraced delay distribution would instead render a tracing scenario a silent no-op, and the model warns at the start of a run when this is the case.
+
+\textbf{Probability of admission.} The probability that a traced case is potentially hospitalised may be given either as an absolute probability $h^{T}$, replacing the untraced class- and time-specific value $h_j(s_i)$, or as a multiplier $\mu$ applied to it:
+\begin{equation}
+\Prob\!\left(\text{potentially hospitalised} \,\middle|\, Y_i = 1\right) \;=\;
+\begin{cases}
+h^{T} & \text{(absolute specification),}\\
+\min\!\left\{1,\; \mu\, h_j(s_i)\right\} & \text{(multiplicative specification).}
+\end{cases}
+\end{equation}
+Both are provided because neither subsumes the other. Against the fitted, time-varying hospitalisation curves supplied to the model, a multiplier cannot express a scenario statement of the form ``traced cases are hospitalised with probability $0{\cdot}9$'', while an absolute probability discards the shape of the fitted curve. Supplying both simultaneously is an error.
+
+\textbf{Implicit effect through realised admission.} As in Step~5 of Section~1.2, potential hospitalisation is realised only where admission precedes the provisional community outcome, that is, where $s_i + D_i < T_i^{\mathrm{out,comm}}$. Shortening $D_i$ through (9) therefore raises the \emph{realised} proportion of admissions even with the admission probability in (10) held fixed, and this third effect operates whenever tracing acts on timing at all.
+
+\subsection{Revised derivation of $R_0$}
+
+The mapping of Section~1.3 carries over with the substitution of the contact-structured mean from (6). Retaining the single-type approximation and evaluating at $t = 0$,
+\begin{equation}
+R_0 \;=\; \underbrace{c_G\,\pi_G\,\bar{\rho}_G\; \mathcal{D}}_{\text{community and hospital}} \;+\; \underbrace{c_F\,\pi_F\,\bar{\rho}_F\; \mathcal{F}}_{\text{funerals}} ,
+\end{equation}
+with the dimensionless multipliers defined exactly as before,
+\begin{equation}
+\mathcal{D} = 1 - \eta(0)\, Q_g ,
+\qquad
+\mathcal{F} = \theta_{\mathrm{comm}}\!\left[1 - \epsilon(1 - u_{\mathrm{comm}})\right] + \theta_{\mathrm{hosp}}\!\left[1 - \epsilon(1 - u_{\mathrm{hosp}})\right],
+\end{equation}
+where $Q_g$ is the expected fraction of a parent's generation-interval mass falling after their own admission, $\theta$ the realised probabilities of dying in the community and in hospital, $u$ the corresponding probabilities of an unsafe funeral at $t = 0$, and $\epsilon$ the efficacy of a safe and dignified burial.
+
+Three features are worth noting. The overdispersion parameters $k_j$ do not appear, because thinning a negative binomial leaves its mean unchanged; superspreading may therefore be varied without disturbing a calibration. The entire effect of the tier structure enters through the scalar $\bar{\rho}_R$, so that under the highest-tier reference convention $\bar{\rho}_R \le 1$ and the tier structure \emph{attenuates} rather than amplifies transmission, with $R_0$ sweeping from zero to $c_R \bar{\rho}_R$ as $\pi_R$ ranges over $[0,1]$. And because whether a case is traced depends on the tier in which it was infected, the Monte Carlo ensemble used to estimate $Q_g$ must draw tiers from the case-weighted distribution $\psi$ of (7) rather than from $\varphi$; using $\varphi$ understates the traced fraction, and hence $Q_g$, whenever traceability is correlated with risk.
+
+Given a target $R_0$ and funeral share $p_F$, (11) inverts to
+\begin{equation}
+\pi_G \;=\; \frac{(1 - p_F)\, R_0}{c_G\, \bar{\rho}_G\, \mathcal{D}},
+\qquad\qquad
+\pi_F \;=\; \frac{p_F\, R_0}{c_F\, \bar{\rho}_F\, \mathcal{F}} ,
+\end{equation}
+subject to (4); targets violating it raise an error naming the achievable ceiling rather than silently clipping the highest tier. As before, $\mathcal{D}$ and $\mathcal{F}$ are evaluated once and reused within every ABC proposal. We emphasise that $p_F$ is an \emph{input} to (13) and should not be recovered from the mean contact numbers: because $\mathcal{F}$ embeds both the case fatality risk and safe-burial thinning, the funeral share implied by nominal offspring means is substantially below the calibrated quantity.
+
+\subsection{Presymptomatic transmission}
+
+Contact times in (2) and incubation periods are drawn independently, so a contact may fall before the parent's symptom onset. This is a property of the original formulation, which the contact structure makes explicit and controllable. The presymptomatic share is not a parameter but an emergent consequence of the two distributions; for parent $i$ it is the truncated-Gamma mass below onset, $\Pi_i = F_{\mathrm{GT}}(E_i) / F_{\mathrm{GT}}(T_i^{\mathrm{out}})$. Averaged by Monte Carlo over natural histories simulated as in Step~5 of Section~1.2, at the values used here --- incubation Gamma with mean $8{\cdot}5$ days and SD $4{\cdot}5$ days, generation interval Gamma with mean $15{\cdot}4$ days and shape $2{\cdot}5$ --- this gives $\E[\Pi] = 0{\cdot}365$, ranging from roughly a quarter to a half across plausible filovirus parameter combinations. Because any intervention keyed to symptom onset acts only on the complementary mass, $\E[\Pi]$ places a ceiling on what tracing can achieve through (9) and (10). It is reported as a run-time diagnostic, computed with the random number generator state saved and restored so that enabling it cannot perturb a trajectory, and the switch $a_i = E_i$ in (2) removes presymptomatic transmission entirely. This conditioning lengthens the realised generation interval rather than reshaping it, so fitted values of $\alpha_j$ and $\beta_j$ carry a slightly different meaning under the truncated formulation.
+
+\subsection{Model outputs}
+
+Alongside the transmission tree, the model returns a contact log with one row per contact drawn in (1), including contacts for which $X_{im} = 0$. Each row records the infector, the recipient where transmission occurred, the setting and absolute time, the tier $Z_{im}$ and its relative risk, the realised transmission probability from (3), the traced status $Y_{im}$ from (8), and, for contacts that did not become infections, whether this was because $X_{im} = 0$ or because of a specific intervention layer --- the denominator required for any analysis of tracing or prophylaxis coverage, including the two dosing policies of Section~1.4. The model also reports whether a run ended by extinction, by reaching the final-size cap, or by exhausting the susceptible pool, the latter two returning censored outbreak sizes otherwise indistinguishable from a controlled outbreak.
+
+\begin{table}[b]
+\centering
+\captionsetup{labelformat=empty}
+\caption{\textbf{Table S1. Illustrative risk-tier structure and derived quantities.} Five tiers spanning a five-fold range of relative risk, with tier frequency falling as risk rises such that the lowest-risk tier is exactly five times as common as the highest. Note that the case composition $\psi_l$ is markedly flatter than the contact composition $\varphi_l$.}
+\footnotesize
+\begin{tabular}{cccc}
+\toprule
+Tier $l$ & Contact share $\varphi_l$ & Relative risk $\rho_l$ & Case share $\psi_l$ \\
+\midrule
+1 & $0{\cdot}333$ & $0{\cdot}2$ & $0{\cdot}143$ \\
+2 & $0{\cdot}267$ & $0{\cdot}4$ & $0{\cdot}229$ \\
+3 & $0{\cdot}200$ & $0{\cdot}6$ & $0{\cdot}257$ \\
+4 & $0{\cdot}133$ & $0{\cdot}8$ & $0{\cdot}229$ \\
+5 $(= l^{*})$ & $0{\cdot}067$ & $1{\cdot}0$ & $0{\cdot}143$ \\
+\bottomrule
+\end{tabular}
+
+\vspace{2pt}
+{\footnotesize Mean relative risk $\bar{\rho} = 0{\cdot}467$. With $c_G = c_H = 15$, $c_F = 20$, a target $R_0$ of $1{\cdot}35$ and $p_F = 0{\cdot}25$, equation (13) returns $\pi_G = 0{\cdot}150$ and $\pi_F = 0{\cdot}073$. Per-tier traceability $\kappa_l$ is scenario-specific.}
+\end{table}
+
+\subsection{Limitations of the contact-structured formulation}
+
+Four limitations bear on the interpretation of tracing scenarios. First, $C_i$ in (1) is drawn without reference to $T_i^{\mathrm{out}}$, and the contact times in (2) are then truncated into the surviving window, so a parent who dies early generates the same expected number of contacts as one who survives, merely compressed into a shorter interval. Since admission shortens $T_i^{\mathrm{out}}$, the benefit of earlier admission is represented only through relocation of contacts into the isolated window and not through shortening of the infectious period, making estimated tracing benefits conservative; a rate-based formulation, $\E[C_i] = c_j\,\E[T_i^{\mathrm{out}}]$, would remove this but requires recalibration and a re-derivation of (11), since $\E[T^{\mathrm{out}}]$ itself depends on the hospitalisation parameters that tracing modifies. Second, because earlier admission relocates transmission into the hospital, where by the class-assignment probabilities of Step~2 contacts are far more likely to be health-care workers, the health-care-worker share of infections can rise under tracing even as total transmission falls --- most markedly where ETU capacity and PPE coverage are lowest, that is, earliest in a response --- so health-care-worker burden should be reported separately from outbreak size. Third, $\kappa_l$ in (8) is fixed in time, so the model represents a tracing programme scaling in magnitude but not one broadening its reach across tiers as capacity accumulates. Fourth, the susceptible pool does not enter (3), so depletion terminates a run rather than attenuating transmission; this is immaterial at the population sizes used here, and the remedy is an additional factor $S(t)/N$ in (3), at the cost of rendering (11) an explicitly $t = 0$ quantity.
+
+\end{document}

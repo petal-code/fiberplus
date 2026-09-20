@@ -2,14 +2,19 @@
 % Please edit documentation in R/offspring_function_genPop.R
 \name{offspring_function_genPop}
 \alias{offspring_function_genPop}
-\title{Generate offspring for a general-population (genPop) parent with time-based setting and hospital thinning}
+\title{Generate offspring for a general-population (genPop) parent}
 \usage{
 offspring_function_genPop(
   parent_info,
-  mn_offspring_genPop = NULL,
-  overdisp_offspring_genPop = NULL,
+  mn_contacts_genPop = NULL,
+  overdisp_contacts_genPop = NULL,
+  baseline_risk_genPop = NULL,
+  contact_risk_genPop = NULL,
   Tg_shape_genPop = NULL,
   Tg_rate_genPop = NULL,
+  trace_coverage = 0,
+  return_contact_log = TRUE,
+  presymptomatic_transmission = TRUE,
   prop_etu = NULL,
   etu_efficacy = NULL,
   general_hospital_quarantine_efficacy = NULL,
@@ -29,16 +34,26 @@ offspring_function_genPop(
 )
 }
 \arguments{
-\item{parent_info}{One-row data.frame/list containing parent infection, hospitalisation and outcome times.}
+\item{parent_info}{One-row data.frame/list containing parent infection, incubation,
+hospitalisation and outcome times.}
 
-\item{mn_offspring_genPop}{Positive numeric or function(t). Mean of the Negative Binomial offspring
-distribution for genPop parents (\code{rnbinom(mu = ..., size = ...)}). May be supplied as a single
-positive scalar or as a function of absolute calendar time (e.g. built with
-\code{\link{make_time_varying}}); when time-varying it is resolved at the parent's absolute
-infection time.}
+\item{mn_contacts_genPop}{Positive numeric or function(t). Mean of the Negative Binomial
+contact distribution for genPop parents, resolved at the parent's absolute infection
+time.}
 
-\item{overdisp_offspring_genPop}{Positive numeric. Negative Binomial \code{size} (overdispersion)
-for genPop parents.}
+\item{overdisp_contacts_genPop}{Positive numeric. Negative Binomial \code{size}
+(overdispersion) of the contact distribution. Does not affect the implied R0 --
+thinning a Negative Binomial leaves its mean unchanged -- so it dials superspreading
+independently of the calibration.}
+
+\item{baseline_risk_genPop}{Numeric in \code{[0,1]} or function(t). Per-contact
+transmission probability for the \emph{reference} risk tier; other tiers scale it by their
+relative risk. Resolved at each contact's own absolute calendar time. Solve it from a
+target R0 with \code{\link{solve_baseline_risk_for_r0}}.}
+
+\item{contact_risk_genPop}{A \code{\link{make_contact_risk}} structure (or a named list
+of its arguments) giving tier fractions, relative risks and trace probabilities for
+this route. Defaults to five flat tiers with no tracing.}
 
 \item{Tg_shape_genPop}{Positive numeric. Shape of the Gamma generation-time distribution
 for genPop parents (before truncation).}
@@ -46,85 +61,113 @@ for genPop parents (before truncation).}
 \item{Tg_rate_genPop}{Positive numeric. Rate of the Gamma generation-time distribution
 for genPop parents (before truncation). Mean GT is \code{Tg_shape_genPop / Tg_rate_genPop}.}
 
-\item{prop_etu}{Numeric in \code{[0,1]} or function(t). Proportion of hospitalised cases managed
-in ETU/ETC care at time \code{t} (the time-varying "coverage" lever for hospital quarantine).
-The post-admission hospital quarantine efficacy is derived as the prop_etu(t)-weighted mixture
+\item{trace_coverage}{Numeric in \code{[0,1]} or function(t). Programme-level contact
+tracing coverage, multiplying each tier's \code{trace_prob}.}
+
+\item{return_contact_log}{Logical scalar. \code{FALSE} skips building the contact log for
+this parent and returns an empty one, saving the per-parent data.frame construction. See
+\code{\link{branching_process_main}} for why that matters at scale.}
+
+\item{presymptomatic_transmission}{Logical scalar. \code{TRUE} (default) lets contacts occur
+at any point between the parent's infection and outcome, including before symptom onset.
+\code{FALSE} truncates contact times to start at the end of the parent's incubation period,
+so no transmission happens before onset. Applied to every parent, symptomatic or not: the
+incubation period is drawn for all cases and marks the start of infectiousness.}
+
+\item{prop_etu}{Numeric in \code{[0,1]} or function(t). Proportion of hospitalised cases
+managed in ETU/ETC care at time \code{t} (the time-varying coverage lever for hospital
+quarantine). The post-admission hospital quarantine efficacy is the mixture
 \code{prop_etu(t) * etu_efficacy + (1 - prop_etu(t)) * general_hospital_quarantine_efficacy}.}
 
-\item{etu_efficacy}{Numeric in \code{[0,1]} (fixed scalar). Post-admission quarantine efficacy
-for cases managed in ETU/ETC care.}
+\item{etu_efficacy}{Numeric in \code{[0,1]} (fixed scalar). Post-admission quarantine
+efficacy for cases managed in ETU/ETC care.}
 
-\item{general_hospital_quarantine_efficacy}{Numeric in \code{[0,1]} (fixed scalar). Post-admission
-quarantine efficacy for cases managed in general (non-ETU) hospital care.}
+\item{general_hospital_quarantine_efficacy}{Numeric in \code{[0,1]} (fixed scalar).
+Post-admission quarantine efficacy for cases managed in general (non-ETU) hospital care.}
 
 \item{obv_pep_enabled}{Logical scalar. If TRUE, applies an OBV PEP infection-prevention
-gate around the Swiss-cheese thinning step. The gate composes multiplicatively with the
-PPE/quarantine layers: a candidate must survive every protective layer (PPE source,
-PPE receiver, hospital quarantine) AND not be prevented by OBV efficacy to appear as a
-realised infection. See \code{apply_obv_pep_gate()} for the two-phase semantics.}
+gate around the intervention thinning step. The gate operates on the contacts that
+transmitted, so its existing semantics are unchanged by the contact layer.}
 
 \item{obv_pep_coverage}{Numeric in \code{[0,1]} or function(t). Probability a
 pre-thinning eligible candidate receives OBV at calendar time \code{t}.}
 
-\item{obv_pep_adherence}{Numeric in \code{[0,1]} or function(t). Probability an OBV recipient
-adheres sufficiently for efficacy to apply.}
+\item{obv_pep_adherence}{Numeric in \code{[0,1]} or function(t). Probability an OBV
+recipient adheres sufficiently for efficacy to apply.}
 
-\item{obv_pep_dpc}{Non-negative numeric or function(t). Days post challenge/exposure to first
-dose. The simplest working assumption is \code{obv_pep_dpc = 1}. When
-\code{obv_pep_dpc_sd} is set this is the \emph{mean} of the per-recipient DPC draw.}
+\item{obv_pep_dpc}{Non-negative numeric or function(t). Days post challenge/exposure to
+first dose. When \code{obv_pep_dpc_sd} is set this is the \emph{mean} of the
+per-recipient DPC draw.}
 
-\item{obv_pep_dpc_sd}{NULL or a single positive numeric. NULL (default) keeps DPC
-deterministic at \code{obv_pep_dpc}; if set, it is the standard deviation of each
-recipient's DPC, drawn from a Gamma with mean \code{obv_pep_dpc(t)} and this fixed sd
-(a fixed absolute spread), adding individual variation in time-to-treatment. See
-\code{apply_obv_pep_gate()}.}
+\item{obv_pep_dpc_sd}{NULL or a single positive numeric. NULL keeps DPC deterministic at
+\code{obv_pep_dpc}; if set, it is the standard deviation of each recipient's DPC.}
 
-\item{obv_pep_efficacy}{NULL, numeric in \code{[0,1]}, or function(dpc). NULL or a scalar use the
-built-in \code{obv_pep_efficacy_from_dpc()} curve (flat by default; a scalar is the constant
-efficacy / \code{E0}); a function(dpc) is used as-is. See \code{apply_obv_pep_gate()}.}
+\item{obv_pep_efficacy}{NULL, numeric in \code{[0,1]}, or function(dpc). NULL or a scalar
+use the built-in \code{\link{obv_pep_efficacy_from_dpc}} curve; a function(dpc) is used
+as-is.}
 
-\item{obv_pep_efficacy_args}{NULL or a named list of overrides for the built-in
-\code{obv_pep_efficacy_from_dpc()} curve (e.g. \code{list(shape = "logistic", d50 = 4)} for DPC
-decay), applied when \code{obv_pep_efficacy} is NULL or a scalar. See \code{apply_obv_pep_gate()}.}
+\item{obv_pep_efficacy_args}{NULL or a named list of overrides for the built-in efficacy
+curve.}
 
 \item{obv_pep_target_class}{Character vector of offspring classes eligible for OBV PEP.
 Defaults to \code{"HCW"}.}
 
-\item{obv_pep_target_locations}{Character vector of exposure settings eligible for OBV PEP.
-Defaults to \code{"hospital"} for HCW occupational exposures.}
+\item{obv_pep_target_locations}{Character vector of exposure settings eligible for OBV
+PEP. Defaults to \code{"hospital"}.}
 
-\item{ppe_coverage_hcw}{Numeric in \code{[0,1]} or function(t). Coverage: probability that an HCW
-recipient has PPE while treating the hospitalised genPop parent. The PPE layer thins HCW-recipient
-hospital transmissions by \code{ppe_coverage_hcw(t) * ppe_efficacy}, applied multiplicatively on
-top of \code{hospital_quarantine_efficacy}; coverage is resolved at the absolute calendar time of
-each such candidate transmission event.}
+\item{ppe_coverage_hcw}{Numeric in \code{[0,1]} or function(t). Coverage: probability that
+an HCW recipient has PPE while treating the hospitalised genPop parent.}
 
-\item{ppe_efficacy}{Numeric in \code{[0,1]} (fixed scalar). Efficacy of PPE at preventing infection
-conditional on the HCW recipient having it. Combined with \code{ppe_coverage_hcw} as a single
-per-event thinning probability \code{ppe_coverage_hcw(t) * ppe_efficacy}.}
+\item{ppe_efficacy}{Numeric in \code{[0,1]} (fixed scalar). Efficacy of PPE conditional on
+the HCW recipient having it.}
 
-\item{prob_hcw_cond_genPop_comm}{Numeric in \code{[0,1]}. Probability that a community-located
-offspring generated by a genPop parent is an HCW.}
+\item{prob_hcw_cond_genPop_comm}{Numeric in \code{[0,1]}. Probability that a
+community-located contact of a genPop parent is an HCW.}
 
-\item{prob_hcw_cond_genPop_hospital}{Numeric in \code{[0,1]}. Probability that a hospital-located
-offspring generated by a genPop parent is an HCW.}
+\item{prob_hcw_cond_genPop_hospital}{Numeric in \code{[0,1]}. Probability that a
+hospital-located contact of a genPop parent is an HCW.}
+}
+\value{
+A data.frame with one row per realised infection, carrying
+\code{infection_location}, \code{time_infection_relative}, \code{class},
+\code{contact_risk_level}, \code{contact_risk_category}, \code{traced} and the OBV PEP
+metadata columns. The full contact log (every contact, transmitting or not) is attached
+as the \code{"contact_log"} attribute; OBV counters and prevented-infection snapshots
+are attached as before.
 }
 \description{
-Simulates secondary infections (offspring) generated by a \strong{general-population} parent.
-The number of candidate offspring is drawn from a Negative Binomial distribution.
-Candidate infection times are drawn from a \strong{truncated Gamma} generation-time distribution
-on \eqn{[0, t_\mathrm{outcome}]}. Each event is assigned a setting by comparing the infection
-time to the parent's hospitalisation time: events before admission are labelled
-\code{"community"} and those after admission \code{"hospital"}. Each offspring is then
-assigned a class (\code{"HCW"} or \code{"genPop"}) using setting-specific probabilities,
-and hospital-setting events are thinned by two multiplicatively-combined protective layers:
-the hospital quarantine efficacy applies to all hospital recipients (the source is a
-hospitalised, isolated genPop patient), and PPE additionally protects HCW recipients (who
-wear PPE while treating the hospitalised case). Hospital keep-probability for a genPop
-recipient is \eqn{1 - \mathrm{hospital\_quarantine\_efficacy}(t)} and for an HCW recipient
-is \eqn{(1 - \mathrm{hospital\_quarantine\_efficacy}(t))(1 - \mathrm{ppe\_coverage\_hcw}(t)\,\mathrm{ppe\_efficacy})},
-i.e. the PPE layer thins by coverage times conditional efficacy. The post-admission
-\code{hospital_quarantine_efficacy(t)} is calculated internally as a \code{prop_etu(t)}-weighted
-mixture of the (fixed) ETU and general-hospital quarantine efficacies at each candidate hospital
-transmission time.
+Simulates the contacts made by a \strong{general-population} parent and the subset of
+those contacts that become secondary infections.
+}
+\details{
+The number of \strong{contacts} is drawn from a Negative Binomial distribution. Contact
+times are drawn from a \strong{truncated Gamma} generation-time distribution on
+\eqn{[0, t_\mathrm{outcome}]}. Each contact is assigned a setting by comparing its
+time to the parent's hospitalisation time (before admission: \code{"community"};
+after: \code{"hospital"}), a class (\code{"HCW"} or \code{"genPop"}) using
+setting-specific probabilities, and a \strong{risk tier} from \code{contact_risk_genPop}.
+
+A contact then transmits with probability
+\code{baseline_risk_genPop(t) * relative_risk[tier]}, resolved at that contact's own
+calendar time. Contacts that transmit are thinned further by the intervention layers,
+which compose multiplicatively (Swiss-cheese):
+\itemize{
+\item \strong{Hospital quarantine} applies to every post-admission (hospital) event, at
+the \code{prop_etu(t)}-weighted mixture of the fixed ETU and general-hospital
+efficacies.
+\item \strong{PPE} additionally protects HCW recipients in the hospital setting, thinning
+by \code{ppe_coverage_hcw(t) * ppe_efficacy}.
+}
+
+By default contacts can occur before the parent develops symptoms, because contact times
+and the incubation period are drawn independently. Setting
+\code{presymptomatic_transmission = FALSE} truncates the generation-time distribution to
+start at the end of the parent's incubation period, removing that transmission. See
+\code{\link{approx_presymptomatic_transmission}} for how much of it a given parameter set
+produces.
+
+Every contact is independently marked as traced or not, with probability
+\code{trace_coverage(t) * trace_prob[tier]}. Traced status travels with any contact
+that becomes a case and speeds up its hospital admission downstream (see
+\code{\link{complete_offspring_info}}).
 }

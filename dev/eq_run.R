@@ -37,20 +37,30 @@ source("dev/profile_run.R")   # provides run_sim() with a full, valid parameter 
 ## ~1-2 minutes instead of tens of minutes.
 scenarios <- list(
   base         = list(check_final_size = 1500L),
-  takeoff_1500 = list(check_final_size = 1500L, mn_offspring_genPop = 3,
-                      mn_offspring_hcw = 3, mn_offspring_funeral = 3),
-  cap_200      = list(check_final_size = 200L,  mn_offspring_genPop = 3,
-                      mn_offspring_hcw = 3, mn_offspring_funeral = 3),
+  takeoff_1500 = list(check_final_size = 1500L, mn_contacts_genPop = 3,
+                      mn_contacts_hcw = 3, mn_contacts_funeral = 3),
+  cap_200      = list(check_final_size = 200L,  mn_contacts_genPop = 3,
+                      mn_contacts_hcw = 3, mn_contacts_funeral = 3),
   obv_on       = list(check_final_size = 1500L, obv_pep_enabled = TRUE,
-                      obv_pep_coverage = 0.8, mn_offspring_genPop = 2,
-                      mn_offspring_hcw = 2, mn_offspring_funeral = 2),
+                      obv_pep_coverage = 0.8, mn_contacts_genPop = 2,
+                      mn_contacts_hcw = 2, mn_contacts_funeral = 2),
   time_varying = list(check_final_size = 1500L,
-                      mn_offspring_genPop = make_time_varying(c(0, 30, 80),
-                                                              c(1, 3, 0.5)),
-                      mn_offspring_hcw = 2, mn_offspring_funeral = 2),
+                      mn_contacts_genPop = make_time_varying(c(0, 30, 80),
+                                                             c(1, 3, 0.5)),
+                      mn_contacts_hcw = 2, mn_contacts_funeral = 2),
   susc_limited = list(check_final_size = 2000L, population = 1500,
-                      mn_offspring_genPop = 3, mn_offspring_hcw = 3,
-                      mn_offspring_funeral = 3)
+                      mn_contacts_genPop = 3, mn_contacts_hcw = 3,
+                      mn_contacts_funeral = 3),
+  ## Contact-first specific: a graded risk structure with tracing and fast admission on.
+  traced       = list(check_final_size = 1500L, mn_contacts_genPop = 3,
+                      mn_contacts_hcw = 3, mn_contacts_funeral = 3,
+                      contact_risk = contact_risk_gradient(5, ratio = 8,
+                                                           trace_prob_range = c(0.1, 0.9)),
+                      trace_coverage = 0.8, onset_to_hospitalisation_traced = 1),
+  ## And the same set with presymptomatic transmission switched off.
+  no_presympt  = list(check_final_size = 1500L, mn_contacts_genPop = 3,
+                      mn_contacts_hcw = 3, mn_contacts_funeral = 3,
+                      presymptomatic_transmission = FALSE)
 )
 seeds <- 1:6
 

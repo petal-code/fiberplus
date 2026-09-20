@@ -282,6 +282,9 @@ empty_offspring_dataframe <- function() {
     infection_location      = character(0),
     time_infection_relative = numeric(0),
     class                   = character(0),
+    contact_risk_level      = integer(0),
+    contact_risk_category   = character(0),
+    traced                  = logical(0),
     obv_pep_eligible        = logical(0),
     obv_pep_received        = logical(0),
     obv_pep_adherent        = logical(0),
@@ -289,8 +292,9 @@ empty_offspring_dataframe <- function() {
     stringsAsFactors = FALSE
   )
   attr(out, "obv_pep_num_treated")    <- empty_obv_pep_num_treated()
-  attr(out, "obv_pep_prevented_info") <- empty_obv_prevented_info() 
-  .empty_offspring_df_cache$value <- out                             
+  attr(out, "obv_pep_prevented_info") <- empty_obv_prevented_info()
+  attr(out, "contact_log")            <- empty_contact_log()
+  .empty_offspring_df_cache$value <- out
   out
 }
 

@@ -51,8 +51,9 @@ hq_run <- function(seed, ...) {
   set.seed(seed)
   offspring_function_genPop(
     parent_info                   = hq_make_parent(),
-    mn_offspring_genPop           = 800,
-    overdisp_offspring_genPop     = 400,
+    mn_contacts_genPop           = 800,
+    baseline_risk_genPop           = 1,
+    overdisp_contacts_genPop     = 400,
     Tg_shape_genPop               = 4,
     Tg_rate_genPop                = 1,
     ppe_coverage_hcw              = 0,
@@ -143,16 +144,19 @@ test_that("branching_process_main errors when derived inputs are incomplete", {
   ## (prop_etu + etu_efficacy + general_*); there is no direct override.
   expect_error(
     branching_process_main(
-      mn_offspring_genPop           = 1.5,
-      overdisp_offspring_genPop     = 5,
+      mn_contacts_genPop           = 1.5,
+      baseline_risk_genPop           = 1,
+      overdisp_contacts_genPop     = 5,
       Tg_shape_genPop               = 4,
       Tg_rate_genPop                = 1,
-      mn_offspring_hcw              = 1.5,
-      overdisp_offspring_hcw        = 5,
+      mn_contacts_hcw              = 1.5,
+      baseline_risk_hcw              = 1,
+      overdisp_contacts_hcw        = 5,
       Tg_shape_hcw                  = 4,
       Tg_rate_hcw                   = 1,
-      mn_offspring_funeral          = 1.5,
-      overdisp_offspring_funeral    = 5,
+      mn_contacts_funeral          = 1.5,
+      baseline_risk_funeral          = 1,
+      overdisp_contacts_funeral    = 5,
       Tg_shape_funeral              = 10,
       Tg_rate_funeral               = 5,
       incubation_period             = function(n) rep(5, n),
@@ -184,6 +188,8 @@ test_that("branching_process_main errors when derived inputs are incomplete", {
       prob_hcw_cond_funeral_hcw     = 0.3,
       prob_hcw_cond_funeral_genPop  = 0.1,
       population                    = 1000,
+      check_presymptomatic = FALSE,
+      quiet                = TRUE,   # these runs sit at a tiny cap; the censoring warning is expected
       check_final_size              = 50,
       seeding_cases                 = 1,
       seed                          = 1

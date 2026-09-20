@@ -27,6 +27,13 @@ complete_offspring_info <- function(
     p_unsafe_funeral_comm_genPop = NULL, ## scalar or function(t): probability of unsafe funeral after a community death, genPop
     p_unsafe_funeral_hosp_genPop = NULL, ## scalar or function(t): probability of unsafe funeral after a hospital death, genPop
 
+    ## Contact tracing consequences. `traced` arrives on the offspring dataframe from the
+    ## offspring functions (a contact's tier determines how likely it was to be traced).
+    ## Traced cases may be admitted sooner and more often. Both default to no effect.
+    onset_to_hospitalisation_traced = NULL,    ## scalar or function(t): flat onset-to-admission delay for traced cases (caps their own delay); NULL = no effect
+    prob_hospitalised_traced = NULL,           ## scalar or function(t): ABSOLUTE P(hospitalised | symptomatic) for traced cases; NULL = no effect
+    prob_hospitalised_multiplier_traced = 1,   ## scalar or function(t): multiplier on P(hospitalised | symptomatic) for traced cases (ignored if the absolute is set)
+
     ## Delay distributions
     incubation_period,                   ## between infection occurring and symptoms occurring (in symptomatic individuals)
     onset_to_hospitalisation,            ## between symptom onset and hospitalisation
@@ -86,6 +93,26 @@ complete_offspring_info <- function(
   validate_probability_or_time_varying(p_unsafe_funeral_hosp_hcw, "p_unsafe_funeral_hosp_hcw")
   validate_probability_or_time_varying(p_unsafe_funeral_comm_genPop, "p_unsafe_funeral_comm_genPop")
   validate_probability_or_time_varying(p_unsafe_funeral_hosp_genPop, "p_unsafe_funeral_hosp_genPop")
+  validate_positive_or_time_varying(prob_hospitalised_multiplier_traced, "prob_hospitalised_multiplier_traced")
+  if (!is.null(prob_hospitalised_traced)) {
+    validate_probability_or_time_varying(prob_hospitalised_traced, "prob_hospitalised_traced")
+  }
+  if (!is.null(onset_to_hospitalisation_traced) && !is.function(onset_to_hospitalisation_traced) &&
+      (!is.numeric(onset_to_hospitalisation_traced) || length(onset_to_hospitalisation_traced) != 1L ||
+       is.na(onset_to_hospitalisation_traced) || onset_to_hospitalisation_traced < 0)) {
+    stop("`onset_to_hospitalisation_traced` must be NULL, a function(t), or a single non-negative numeric value.",
+         call. = FALSE)
+  }
+
+  ## Delays may legitimately be zero (same-day admission), so they get their own resolver
+  ## rather than reusing the strictly-positive one.
+  resolve_nonneg <- function(param, t, param_name) {
+    value <- resolve_time_varying(param = param, t = t, param_name = param_name)
+    if (any(!is.finite(value)) || any(value < 0)) {
+      stop(sprintf("`%s` must resolve to finite, non-negative value(s).", param_name), call. = FALSE)
+    }
+    value
+  }
 
   ## Step 0: Note on parameter interpretation
   ## prob_death_comm, prob_death_hosp, prob_hospitalised_hcw, and
@@ -120,6 +147,20 @@ complete_offspring_info <- function(
   offspring_absolute_symptom_time <- offspring_absolute_infection_time + offspring_incubation_period
 
   ################################################################################################################################
+  ## Step 1b: Contact tracing status
+  ##  - `traced` is carried on the offspring dataframe by the offspring functions: whether a contact was reached by tracing
+  ##    depends on its risk tier, so this is the channel by which the risk structure drives the NPIs.
+  ##  - Its consequences land in Step 2 below: a traced case is admitted sooner, and possibly more often.
+  ##  - The replay path used for OBV's prevented-infection counterfactual builds its offspring frame without this column,
+  ##    so default it to FALSE rather than requiring it.
+  ################################################################################################################################
+  offspring_traced <- if (is.null(offspring_dataframe$traced)) {
+    rep(FALSE, num_offspring)
+  } else {
+    as.logical(offspring_dataframe$traced) & !is.na(offspring_dataframe$traced)
+  }
+
+  ################################################################################################################################
   ## Step 2: Deciding whether symptomatic offspring are potentially hospitalised
   ##  - In this section, we calculate the potential hospitalisation status for the (symptomatic) offspring cases, i.e. whether they would
   ##    all other factors notwithstanding, visit hospital. In the subsequent section, we will see whether they are *actually* hospitalised
@@ -142,6 +183,20 @@ complete_offspring_info <- function(
     } else {
       prob_hosp[i] <- resolve_probability(prob_hospitalised_genPop, t_onset, "prob_hospitalised_genPop")
     }
+
+    ## Traced cases may present more readily, specified either as an absolute
+    ## probability (which replaces the untraced value outright) or as a multiplier on
+    ## it. The absolute wins when both are given; both default to no effect.
+    if (offspring_traced[si]) {
+      if (!is.null(prob_hospitalised_traced)) {
+        prob_hosp[i] <- resolve_probability(prob_hospitalised_traced, t_onset,
+                                            "prob_hospitalised_traced")
+      } else {
+        hosp_mult <- resolve_positive(prob_hospitalised_multiplier_traced, t_onset,
+                                      "prob_hospitalised_multiplier_traced")
+        prob_hosp[i] <- min(prob_hosp[i] * hosp_mult, 1)
+      }
+    }
   }
 
   offspring_potentially_hosp <- rep(FALSE, num_offspring)
@@ -154,7 +209,23 @@ complete_offspring_info <- function(
   delay_factors <- resolve_positive(hospitalisation_delay_factor,
                                     offspring_absolute_symptom_time[hosp_indices],
                                     "hospitalisation_delay_factor")
-  offspring_potentially_hosp_time[offspring_potentially_hosp] <- raw_hosp_delays * delay_factors
+  hosp_delays <- raw_hosp_delays * delay_factors
+
+  ## Traced cases are admitted a flat `onset_to_hospitalisation_traced` days after symptom
+  ## onset. This CAPS their delay rather than replacing it: tracing can only speed a case up,
+  ## never hold back someone who would have presented sooner on their own. Note that faster
+  ## admission also raises the REALISED hospitalisation rate, because admission is more likely
+  ## to beat the community outcome (Step 3.2) -- an effect on top of any explicit
+  ## prob_hospitalised_multiplier_traced.
+  if (!is.null(onset_to_hospitalisation_traced) &&
+      length(hosp_indices) > 0 && any(offspring_traced[hosp_indices])) {
+    traced_hosp <- offspring_traced[hosp_indices]
+    traced_delay <- resolve_nonneg(onset_to_hospitalisation_traced,
+                                   offspring_absolute_symptom_time[hosp_indices[traced_hosp]],
+                                   "onset_to_hospitalisation_traced")
+    hosp_delays[traced_hosp] <- pmin(hosp_delays[traced_hosp], traced_delay)
+  }
+  offspring_potentially_hosp_time[offspring_potentially_hosp] <- hosp_delays
 
   ################################################################################################################################
   ## Step 3: Deciding on the outcome for the offspring cases, and if so, when that outcome occurs
@@ -271,6 +342,7 @@ complete_offspring_info <- function(
   offspring_dataframe$time_outcome_relative <-              offspring_incubation_period + offspring_outcome_time
   offspring_dataframe$time_outcome_absolute <-              offspring_dataframe$time_infection_absolute + offspring_dataframe$time_outcome_relative
   offspring_dataframe$funeral_safety <-                     offspring_funeral_safety
+  offspring_dataframe$traced <-                             offspring_traced
   offspring_dataframe$n_offspring <-                        rep(NA_integer_, num_offspring)
   offspring_dataframe$offspring_generated <-                rep(FALSE, num_offspring)
 

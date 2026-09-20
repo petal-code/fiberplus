@@ -6,10 +6,14 @@
 \usage{
 offspring_function_funeral(
   parent_info,
-  mn_offspring_funeral = NULL,
-  overdisp_offspring_funeral = NULL,
+  mn_contacts_funeral = NULL,
+  overdisp_contacts_funeral = NULL,
+  baseline_risk_funeral = NULL,
+  contact_risk_funeral = NULL,
   Tg_shape_funeral = NULL,
   Tg_rate_funeral = NULL,
+  trace_coverage = 0,
+  return_contact_log = TRUE,
   safe_funeral_efficacy = NULL,
   obv_pep_enabled = FALSE,
   obv_pep_coverage = 0,
@@ -26,81 +30,80 @@ offspring_function_funeral(
 }
 \arguments{
 \item{parent_info}{One-row data.frame/list of parent attributes. Funeral transmission reads
-\code{hospitalisation}, \code{time_hospitalisation_relative}, \code{time_outcome_relative}, \code{outcome}
-(did the parent die?), \code{class} ("genPop"/"HCW"), \code{funeral_safety} ("safe"/"unsafe") and
-\code{time_infection_absolute}.}
+\code{hospitalisation}, \code{time_hospitalisation_relative}, \code{time_outcome_relative},
+\code{outcome} (did the parent die?), \code{class} ("genPop"/"HCW"), \code{funeral_safety}
+("safe"/"unsafe") and \code{time_infection_absolute}.}
 
-\item{mn_offspring_funeral}{Positive numeric or function(t). Mean of the NB distribution for the
-number of offspring at an unsafe funeral. May be supplied as a single positive scalar or as a
-function of absolute calendar time (e.g. built with \code{\link{make_time_varying}}); when
-time-varying it is resolved at the parent's absolute death (outcome) time, since the funeral
-occurs then rather than at the parent's infection time.}
+\item{mn_contacts_funeral}{Positive numeric or function(t). Mean of the Negative Binomial
+distribution for the number of contacts at the funeral. Resolved at the parent's absolute
+death (outcome) time, since the funeral occurs then rather than at the parent's infection
+time.}
 
-\item{overdisp_offspring_funeral}{Positive numeric. Negative Binomial size (overdispersion).}
+\item{overdisp_contacts_funeral}{Positive numeric. Negative Binomial size (overdispersion)
+of the funeral contact distribution.}
 
-\item{Tg_shape_funeral}{Positive numeric. Shape of Gamma delay distribution
-for time from outcome to funeral infections.}
+\item{baseline_risk_funeral}{Numeric in \code{[0,1]} or function(t). Per-contact
+transmission probability for the reference risk tier at a funeral, resolved at each
+contact's own calendar time. Typically higher than the community route -- body handling
+is a more intense exposure.}
 
-\item{Tg_rate_funeral}{Positive numeric. Rate of Gamma delay distribution. ## mean GT = shape/rate}
+\item{contact_risk_funeral}{A \code{\link{make_contact_risk}} structure (or a named list of
+its arguments) for the funeral route. Usually distinct from the community structure.}
 
-\item{safe_funeral_efficacy}{numeric between 0 and 1. Efficacy in preventing transmission at a safe funeral where 1 = perfect efficacy/no onward transmission; 0 = no efficacy (equivalent to an unsafe funeral). This remains scalar; the time-varying probability that a funeral is safe or unsafe is resolved upstream.}
+\item{Tg_shape_funeral}{Positive numeric. Shape of the Gamma delay distribution from
+outcome to funeral contacts.}
 
-\item{obv_pep_enabled}{Logical scalar. If TRUE, applies an OBV PEP infection-prevention
-gate around the safe-funeral thinning step. By default \code{obv_pep_target_locations
-  = "hospital"}, so funeral exposures are not eligible; set
-\code{obv_pep_target_locations = c("hospital", "funeral", ...)} to broaden.}
+\item{Tg_rate_funeral}{Positive numeric. Rate of the Gamma delay distribution
+(mean delay = shape / rate).}
 
-\item{obv_pep_coverage}{Numeric in \code{[0,1]} or function(t). Probability a
-pre-thinning eligible candidate receives OBV at calendar time \code{t}.}
+\item{trace_coverage}{Numeric in \code{[0,1]} or function(t). Programme-level contact
+tracing coverage, multiplying each tier's \code{trace_prob}.}
 
-\item{obv_pep_adherence}{Numeric in \code{[0,1]} or function(t). Probability an OBV recipient
-adheres sufficiently for efficacy to apply.}
+\item{return_contact_log}{Logical scalar. \code{FALSE} skips building the contact log for
+this parent and returns an empty one, saving the per-parent data.frame construction. See
+\code{\link{branching_process_main}} for why that matters at scale.}
 
-\item{obv_pep_dpc}{Non-negative numeric or function(t). Days post challenge/exposure to first
-dose. The simplest working assumption is \code{obv_pep_dpc = 1}. When
-\code{obv_pep_dpc_sd} is set this is the \emph{mean} of the per-recipient DPC draw.}
+\item{safe_funeral_efficacy}{Numeric in \code{[0,1]}. Efficacy of a safe burial in
+preventing transmission (1 = fully blocking, 0 = equivalent to an unsafe funeral). The
+time-varying probability that a funeral is safe or unsafe is resolved upstream.}
 
-\item{obv_pep_dpc_sd}{NULL or a single positive numeric. NULL (default) keeps DPC
-deterministic at \code{obv_pep_dpc}; if set, it is the standard deviation of each
-recipient's DPC, drawn from a Gamma with mean \code{obv_pep_dpc(t)} and this fixed sd
-(a fixed absolute spread), adding individual variation in time-to-treatment. See
-\code{apply_obv_pep_gate()}.}
+\item{obv_pep_enabled, obv_pep_coverage, obv_pep_adherence, obv_pep_dpc, obv_pep_dpc_sd}{Obeldesivir
+PEP gate settings; see \code{\link{offspring_function_genPop}}. By default
+\code{obv_pep_target_locations = "hospital"}, so funeral exposures are not eligible.}
 
-\item{obv_pep_efficacy}{NULL, numeric in \code{[0,1]}, or function(dpc). NULL or a scalar use the
-built-in \code{obv_pep_efficacy_from_dpc()} curve (flat by default; a scalar is the constant
-efficacy / \code{E0}); a function(dpc) is used as-is. See \code{apply_obv_pep_gate()}.}
+\item{obv_pep_efficacy, obv_pep_efficacy_args, obv_pep_target_class, obv_pep_target_locations}{Further
+obeldesivir PEP gate settings; see \code{\link{offspring_function_genPop}}.}
 
-\item{obv_pep_efficacy_args}{NULL or a named list of overrides for the built-in
-\code{obv_pep_efficacy_from_dpc()} curve (e.g. \code{list(shape = "logistic", d50 = 4)} for DPC
-decay), applied when \code{obv_pep_efficacy} is NULL or a scalar. See \code{apply_obv_pep_gate()}.}
+\item{prob_hcw_cond_funeral_hcw}{Numeric in \code{[0,1]}. Probability a funeral contact of
+an HCW parent is an HCW.}
 
-\item{obv_pep_target_class}{Character vector of offspring classes eligible for OBV PEP.
-Defaults to \code{"HCW"}.}
-
-\item{obv_pep_target_locations}{Character vector of exposure settings eligible for OBV PEP.
-Defaults to \code{"hospital"} for HCW occupational exposures.}
-
-\item{prob_hcw_cond_funeral_hcw}{Numeric between 0 and 1. Probability a funeral infection is an HCW.}
-
-\item{prob_hcw_cond_funeral_genPop}{Numeric between 0 and 1. Probability a funeral infection is a GenPop}
+\item{prob_hcw_cond_funeral_genPop}{Numeric in \code{[0,1]}. Probability a funeral contact
+of a genPop parent is an HCW.}
 }
 \value{
-A data.frame with one row per realised funeral offspring and columns:
-\code{id}, \code{parent_class}, \code{setting}, \code{time_infection}, \code{class}.
-Returns a 0-row data.frame if no unsafe funeral occurs or zero offspring.
+A data.frame with one row per realised funeral infection, plus the full contact log
+attached as the \code{"contact_log"} attribute. Returns a 0-row data.frame if the parent
+survived or no contacts occurred.
 }
 \description{
-Simulates secondary infections (offspring) generated at an \strong{unsafe funeral}
-for a deceased parent. Funeral offspring are produced only if:
-(i) the parent died, AND
-(ii) an unsafe funeral occurs (Bernoulli with probability p_unsafe_comm or p_unsafe_hosp).
+Simulates the contacts made at a funeral for a deceased parent, and the subset of those
+contacts that become secondary infections. Funeral contacts are generated only if the
+parent died; whether the funeral was safe or unsafe is resolved upstream in
+\code{\link{complete_offspring_info}} and stored on the parent as
+\code{funeral_safety}.
 }
 \details{
-The number of funeral offspring is drawn from a Negative Binomial distribution.
-Infection times are generated as a \strong{Gamma-distributed delay} after the parent’s
-outcome time, with small variance to represent a concentrated exposure event
-with modest jitter. All funeral infections occur in the \code{"funeral"} setting.
+The number of \strong{contacts} at the funeral is drawn from a Negative Binomial distribution.
+Contact times are a \strong{Gamma-distributed delay} after the parent's outcome time, with
+small variance to represent a concentrated exposure event with modest jitter. All funeral
+contacts occur in the \code{"funeral"} setting.
 
-Each realised offspring is then assigned a class (\code{"HCW"} or \code{"genPop"})
-using \code{prob_hcw_cond_funeral}.
+Each contact is assigned a class (\code{"HCW"} or \code{"genPop"}) and a \strong{risk tier}
+from \code{contact_risk_funeral}, and transmits with probability
+\code{baseline_risk_funeral(t) * relative_risk[tier]}. Contacts that transmit are then
+thinned by \code{safe_funeral_efficacy} if the funeral was a safe one. Isolation does not
+apply on this route -- the parent is dead.
+
+Every contact is independently marked as traced, with probability
+\code{trace_coverage(t) * trace_prob[tier]}.
 }
